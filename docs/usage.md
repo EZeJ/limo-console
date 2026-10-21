@@ -2,77 +2,56 @@
 
 [中文](usage.zh-CN.md) · [README](../README.md)
 
-## Language and workspace
+## Record, drive, split
 
-Choose **EN** or **中文** in the top bar. The selection survives refreshes in this browser; it does not change robot settings. The left navigation jumps to Drive, Mapping, and Devices. On narrow screens the panels stack vertically, while the top-bar stop control stays accessible.
+1. Run `scripts/connect.sh USER@ROBOT_HOST` on the computer. Opening the page does not start recording.
+2. Choose a recording profile if needed, then click **Start recording**. Wait for the capture and archival health checks. Driving remains locked until recording is ready.
+3. Enable manual drive. Hold W/A/S/D, arrows or a direction button; release to stop. Space and either Stop button disarm immediately. Stops do **not** end recording.
+4. Press **N** or **Next instance** to mark a new route/task. An optional name labels the next instance. This does not stop driving or restart subscriptions.
+5. Click **End recording** when the session is over. The robot stops, video containers are finalized and remaining sensor chunks are archived. Keep the companion running until completion.
 
-## Drive manually
+A browser refresh does not change recording ownership. Closing the browser leaves recording running in the companion. Closing the companion or losing power interrupts collection and must not be treated as a normal user finish.
 
-1. Confirm that the current camera image is visible, the chassis is online, and the physical pause button is released.
-2. Set forward, reverse, and turning limits; select **Apply speed limits**. Saving stops and disarms the robot. Settings persist on the robot.
-3. Select **Enable manual drive**.
-4. Hold an on-screen direction or a keyboard key. Releasing it sends a zero command. Forward/reverse can be combined with a turn.
-5. Select **Stop & disarm**, use the top-bar **Stop**, or press **Space** to stop and lock driving.
+Forward and reverse limits are independently adjustable from 0 to 1 m/s, and left/right turning share a 0–2 rad/s limit. Saving limits stops and disarms. Autonomous exploration has separate bounded limits. Manual driving does not perform automatic obstacle avoidance.
 
-| Input | Action |
-| --- | --- |
-| W / ↑ | Forward |
-| S / ↓ | Reverse |
-| A / ← | Turn left |
-| D / → | Turn right |
-| Space | Stop and disarm |
+## Files and profiles
 
-Direction shortcuts are ignored while editing an input. Space remains the stop shortcut. A hidden tab, window blur, stale camera frames, or lost connection ends driving. A second tab does not inherit the first tab's armed state; it reports that another page is controlling the robot. Stop can interrupt that control.
+Use **Open folder** to see `~/Documents/Limo Console/recordings/SESSION/INSTANCE/`. A directory contains `manifest.json`, `frames.csv`, `camera.mp4` or `camera.mkv` or `frames/*.png`, and `sensors/*.mcap` with verified receipts. Session-level `configuration.json` captures source configuration and hashes. Paths are private and never uploaded by the console.
 
-### Speed limits
+Default: 640×480 at 10 fps, JPEG transport and H.264 MP4 storage. FFV1 and PNG use lossless PNG transport from raw RGB/BGR pixels, with a pixel hash checked before writing. “Lossless” is relative to the ROS RGB image, not sensor raw/Bayer data. Native resolution is confirmed after applying a camera setting; there is no upscaling disguised as a higher resolution.
 
-Forward and reverse each accept 0–1.00 m/s. Turning accepts 0–2.00 rad/s for both directions. Zero disables the corresponding motion component. Defaults are 0.10 m/s forward, 0.05 m/s reverse, and 0.30 rad/s turning. One radian per second is about 57 degrees per second.
+Profiles apply at the next instance boundary while the robot is stopped, or at the next recording start. Profile changes can create a camera reconfiguration interval; frames retain their original timestamps. A five-second rate check rejects clearly unsustainable choices. Hardware support does not guarantee sustained throughput at every resolution/rate.
 
-These are commanded maximums. Actual speed depends on the chassis, traction, steering mode, and battery. The telemetry displays measured odometry, not the requested limit. Autonomous navigation keeps its own configuration and is not sped up by manual settings.
+Raw `/scan`, `/odom`, `/imu`, TF, camera calibration, chassis state, navigation/map topics, operator events and command-gate ticks are recorded when published and supported. Actual steering-angle and wheel-encoder channels are unavailable from the tested driver. Do not interpret commanded angular velocity as measured steering angle.
 
-Manual driving does not use lidar to avoid obstacles. Observe the environment yourself, including the rear before reversing. The camera's field of view is limited.
+Export a completed instance without ROS or a robot connection:
 
-## Build and export a map
+```sh
+.venv/bin/python -m harness.replay '/private/path/SESSION/INSTANCE' --export
+```
 
-1. Keep lidar scanning active.
-2. Choose Cartographer or SLAM Toolbox before starting a session.
-3. Select **Start mapping**. The robot stops; SLAM starts without a movement goal.
-4. Once the map appears, enable manual driving and move through the space. Both camera and map update live.
-5. Optionally enter a name (1–64 ASCII letters, numbers, underscores, or hyphens) and select **Save map**. An empty name generates a timestamped name. Saving stops movement but keeps SLAM running.
-6. Select a saved map, then **Download map ZIP**. It contains `.pgm` and `.yaml`; the YAML image path is relative so the files can be moved together.
-7. **Save & finish** saves the current fresh map, then stops mapping. If saving fails, the SLAM session remains active for retry. Existing map names are never overwritten.
+Outputs include odometry, derived acceleration, IMU, requested/applied control and event CSVs, plus validation JSON. IMU acceleration includes gravity and bias; odometry acceleration is a finite difference. Original messages remain in MCAP. Sequence verification covers messages received by the recorder, not losses upstream of its subscription. Frame timestamps align camera capture with robot monotonic time and preserve the source ROS stamp; they are not a claim of hardware synchronization.
 
-The map canvas is a display by default. Clicking it cannot drive the robot until the navigation option is explicitly enabled. Map colors distinguish known free space, obstacles, and unknown regions; the arrow shows the estimated robot pose. A mapping restart may start a new SLAM session. Save any important map before switching engines or shutting down.
+## Mapping
 
-## Lidar pause / resume
+Start mapping while stopped, then drive slowly with overlap between observations. Camera and lidar continue running. The mapping scan filter rejects isolated far returns only; raw scans are preserved and remain the collision input. Observe free-area growth, localization and map shape. A live grid is not proof of an accurate route.
 
-**Pause scan data** stops movement, requests `/stop_scan`, and waits for scan data to stop. **Resume scan data** requests `/start_scan` and waits for fresh scans. The preference survives a guard restart. A driver error or timeout is shown instead of reporting unverified success.
+Save a unique map name. The save creates PGM/YAML and a Cartographer `.pbstream` or SLAM Toolbox `.posegraph`/`.data` checkpoint. Download ZIP contains the portable PGM/YAML pair; checkpoints stay in `/control/maps/`. Save-and-finish stops SLAM after a successful save. Exploration's emergency/terminal map snapshot is a grid snapshot, not a full SLAM checkpoint.
 
-This controls data acquisition. It does not verify physical rotation and did not stop the motor on the tested hardware. Mapping and navigation require fresh scans; camera-guided manual driving can remain available with scans paused. Resuming a scan never automatically resumes a driving task.
+To load a map, first save and finish the current mapping session. In **Autonomous navigation**, select the saved map and enter the robot's actual X, Y and heading on that map. **Load saved map & localize** starts AMCL without a driving goal. Check that the displayed robot pose matches reality before explicitly navigating. Checkpoint resume in a backend-specific SLAM process is an advanced operation; loading the grid is localization, not automatic restoration of an editable SLAM session.
 
-## Optional autonomous navigation
+Automatic exploration checks footprint-safe targets with Nav2. There is no blind straight-step or spin fallback. If a route is unavailable or the map does not change after a target, exploration stops with a reason. Recording continues. Default exploration budget: 120 seconds, 6 metres, 0.15 m/s. The HTTP API can request tighter bounds.
 
-Open **Autonomous navigation** in the mapping panel and select **Enable navigation**. Wait for Nav2 and localization to become ready. Autonomous operation requires differential-drive mode and fresh chassis, camera, lidar, and map data.
+## Recovery
 
-- **Map goals:** enable **Allow map clicks to send driving goals**, then click known free space. The selected point is checked against the robot footprint. This action moves the robot.
-- **Explore automatically:** selects reachable frontiers through Nav2. A run is bounded by two minutes, six meters, or twelve reached goals. The stop control remains available.
-- **Return along route:** follows recorded odometry back toward the session start. Auto mode uses reverse only when rear lidar clearance is available; otherwise it turns and travels forward. This is a session route, not a persistent global “home.”
+- A recording fault stops/disarms driving, preserves the session and reports the gap or failure. Available streams continue. After fixing a transient network/storage problem, **Retry recording** checks recovery without creating a new session; driving still needs re-enabling. A robot/camera-process restart may require explicitly ending the interrupted session and starting another.
+- Never delete a robot chunk merely because it was downloaded. The companion acknowledges only after length/hash checks and durable local file/receipt writes; interrupted or mismatched transfers retain the robot copy.
+- Incomplete robot MCAP files are preserved and marked interrupted. Copy them privately to the computer, then salvage complete CRC-valid records:
 
-When exploration cannot find a route in a narrow area, it may attempt a lidar-checked straight step at 0.035 m/s, stopping at roughly 2.5 cm, a three-second deadline, or insufficient clearance. It then waits 2.5 seconds before planning again; this is a settling delay, not a guarantee of a new map revision. At most six such steps are attempted. Repeated step messages mean it is struggling to find a route, not that you should increase manual speed.
+  ```sh
+  .venv/bin/python -m harness.recover interrupted.partial.mcap recovered.mcap
+  ```
 
-## Troubleshooting
-
-| Symptom | Check / action |
-| --- | --- |
-| Browser cannot connect | Keep the SSH tunnel running; check `manage.sh status` and `curl http://127.0.0.1:8765/status` inside the robot environment. |
-| Enable driving is unavailable | Verify fresh camera frames, chassis state, command-control mode, physical pause switch, and completion of any device/mapping operation. |
-| Turning feels capped | Change **Turning** under Speed limits, apply, then re-enable driving. Confirm the applied value; manual settings do not change Nav2 limits. |
-| Camera is dark or overexposed | Check lighting and supported camera controls in `bringup.launch.py`. Review auto exposure, gain, gamma, and anti-flicker frequency for your camera. |
-| Lidar resumes but no scans arrive | Check serial power/connection and driver services. Pause must not terminate the driver process that provides resume. |
-| Lidar still makes noise while paused | Data pause does not stop the motor. The UI cannot verify physical rotation. |
-| Map does not appear | Verify `/scan`, `/map`, the `map → odom → base_link` transforms, and the mapping log. Allow up to 25 seconds for startup; retry after correcting the underlying error. |
-| Map save fails | Check disk space, write permissions, and map freshness. Use a different name if it already exists. |
-| Exploration stops repeatedly | Unknown space, narrow corridors, insufficient scan coverage, or obstacles can prevent a valid route. Continue manual mapping to improve coverage. |
-| Optional desktop fails | Install the optional desktop tools and ensure local port 16080 is forwarded. This does not affect the primary console. |
-
-Do not post raw logs, camera images, maps, hostnames, or connection details publicly without checking their contents.
+  Recovery never overwrites the input and never labels a recovered tail as complete. Unflushed bytes/frames at a crash can be unrecoverable. Fragmented MP4 and partial CSVs are retained for inspection; do not rename them and assume completeness.
+- If the camera is dark, first check ambient light, lens obstruction and the supported exposure controls. Recording quality cannot recover absent illumination.
+- Stationary maintenance is indicated explicitly. Removing `/control/stationary-mode` allows future arming; it does not arm or move the robot.

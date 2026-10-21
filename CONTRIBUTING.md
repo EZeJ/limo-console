@@ -9,7 +9,7 @@ python -m unittest discover -s tests -v
 node tests/test_i18n.js
 node --check robot/web/app.js
 node --check robot/web/i18n.js
-python -m compileall -q robot scripts
+python -m compileall -q robot scripts companion harness
 bash -n scripts/install.sh scripts/tunnel.sh robot/manage.sh robot/env.sh
 python scripts/preview.py
 ```

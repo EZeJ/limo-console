@@ -1,85 +1,86 @@
 # Limo Console
 
-**A focused, bilingual control workspace for the AgileX LIMO robot.**
+**Drive, map and record an AgileX LIMO from a bilingual local workspace.**
 
 English · [简体中文](README.zh-CN.md)
 
-See the camera, steer with a keyboard or touch controls, set your own speed limits, and build a map as you drive. Limo Console runs beside a ROS 2 robot stack and is reached through an SSH tunnel. It has no cloud service and no frontend build step.
+Camera and lidar share one view. Set your forward, reverse and turning limits, map manually or use checked Nav2 goals, and keep synchronized recordings on your computer. The interface has no cloud service, CDN or frontend build step.
 
-![Limo Console — synthetic preview, no robot connected](docs/console-en.jpg)
+![Limo Console — synthetic preview](docs/console-en.jpg)
 
-## What it does
+## Recording belongs to the operator
 
-- **Manual driving:** hold-to-move controls, W/A/S/D or arrow keys, a persistent stop button, and configurable forward, reverse, and turning limits.
-- **Live observation:** front-camera frames, lidar top view, battery voltage, and measured linear/angular speed.
-- **Mapping:** start SLAM without autonomous movement, save named maps, finish with a save, and download portable PGM + YAML ZIPs.
-- **Lidar data control:** pause/resume scans with state verification and persistent settings. Pausing data does **not** guarantee that the lidar motor stops.
-- **Optional navigation:** explicit opt-in map goals, bounded exploration, and return along a recorded route through Nav2.
-- **English and Simplified Chinese:** switch at any time; preference is stored only in your browser. Status messages, validation, and accessible labels are translated.
+- **Start recording** opens a session. Connecting or refreshing the browser does not start one.
+- **Next instance / N** divides the current session into routes or tasks without stopping driving.
+- **End recording** closes the session and completes archival. It also disarms driving.
+- **Stop / Space** stops the robot. Recording continues through stops, obstacle pauses and planning waits.
+- A recording fault disarms driving and marks the incident. Available streams continue recording; faults do not masquerade as a user-completed session. Enabling driving requires a healthy recording session.
 
-## Try the interface without a robot
+Images and videos are saved only on the computer. The robot keeps a bounded RAM image transport and a bounded non-image MCAP spool. Sensor chunks are deleted from the robot only after the computer checks their SHA-256 and size and durably saves both file and receipt.
 
-Python 3.10+ is recommended. From a fresh clone:
+## Features
+
+- Hold-to-drive keyboard/touch controls; independent forward/reverse limits **0–1 m/s**, turning **0–2 rad/s**. Saving limits stops and disarms.
+- Native-aspect camera alongside lidar, battery, measured speed and status. English / 简体中文 throughout.
+- Default **640 × 480, 10 fps H.264 MP4**; selectable native camera resolutions, **FFV1 MKV** or **PNG sequences** for lossless RGB storage. Unsupported throughput locks driving; advertised camera capabilities are not performance guarantees.
+- Raw non-image ROS topics, odometry, IMU, requested and applied controls, chassis state, configuration and operator events in MCAP. Offline CSV export and non-destructive recovery tools.
+- Manual SLAM, map export, SLAM checkpoints and saved-map localization with an explicit starting pose. Bounded frontier exploration uses Nav2 path checks and stops when progress cannot be verified.
+- A capability harness with observations, bounded operations, outcome checks and offline replay. Motion is disabled in the harness by default. No language model or cloud credential is required.
+- Lidar continuously scans. There is no pause/resume or motor-stop control.
+
+## Quick start
+
+Requires a working ROS 2 Humble robot environment. See [installation](docs/installation.md) before first use.
 
 ```sh
 git clone https://github.com/EZeJ/limo-console.git
 cd limo-console
+# On the robot, inside its ROS environment:
+sudo bash scripts/install.sh
+bash /control/manage.sh start
+# On your computer (Python 3.10+):
+./scripts/connect.sh USER@ROBOT_HOST
+```
+
+Open **http://127.0.0.1:18765/**. Click **Start recording**, wait for readiness, then explicitly enable driving. The SSH helper asks for your own credentials; it stores no password. Recordings default to `~/Documents/Limo Console/recordings/`; choose another directory with `--data-dir PATH`.
+
+For a read-only synthetic preview without a robot:
+
+```sh
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 python scripts/preview.py
 ```
 
-Open **http://127.0.0.1:18766/**. The preview uses a drawn camera scene and a generated map. It does not import ROS, contact a robot, or execute motion. Speed settings in the preview are held in memory; all driving and mapping actions are rejected.
-
-## Use with a robot
-
-The supported integration target is **ROS 2 Humble on Ubuntu 22.04**, with an existing LIMO driver workspace. This repository is the console application and integration configuration; it does not contain robot firmware, a prebuilt robot image, or vendor driver source.
-
-1. Follow the [installation guide](docs/installation.md) to provision dependencies, review hardware parameters, and install the console in `/control` inside your robot's ROS environment.
-2. Ensure the chassis driver consumes only the guarded `/limo/cmd_vel` topic and has an independent command-timeout stop.
-3. Start the application on the robot:
-
-   ```sh
-   bash /control/manage.sh start
-   ```
-
-4. On your computer, open the tunnel using your own account and hostname:
-
-   ```sh
-   ./scripts/tunnel.sh USER@ROBOT_HOST
-   ```
-
-5. Visit **http://127.0.0.1:18765/**. The robot starts disarmed. Enable manual drive explicitly when ready.
-
-**Publishing this source does not expose a robot.** The HTTP server binds to loopback only. Do not expose its port through a public reverse proxy or bind it to a public interface; the console relies on SSH for access control.
+Open **http://127.0.0.1:18766/**. Its camera scene and map are synthetic; no robot connection or movement is possible.
 
 ## Documentation
 
 | Topic | English | 简体中文 |
 | --- | --- | --- |
-| Installation, dependencies, configuration | [Installation](docs/installation.md) | [安装与配置](docs/installation.zh-CN.md) |
-| Driving, mapping, lidar, troubleshooting | [User guide](docs/usage.md) | [使用指南](docs/usage.zh-CN.md) |
-| ROS interfaces, HTTP API, control model | [Architecture & API](docs/architecture.md) | [架构与 API](docs/architecture.zh-CN.md) |
-| Development and verification | [Contributing](CONTRIBUTING.md) | [开发说明](CONTRIBUTING.zh-CN.md) |
+| Install, deploy, driver patch, rollback | [Installation](docs/installation.md) | [安装与部署](docs/installation.zh-CN.md) |
+| Driving, recording, mapping, recovery | [User guide](docs/usage.md) | [使用指南](docs/usage.zh-CN.md) |
+| Data format, API, control model | [Architecture](docs/architecture.md) | [架构与 API](docs/architecture.zh-CN.md) |
+| Harness and acceptance criteria | [Harness](docs/harness.md) | [Harness 与验收](docs/harness.zh-CN.md) |
+| Contributing | [Development](CONTRIBUTING.md) | [开发说明](CONTRIBUTING.zh-CN.md) |
 
-## Operational limits
-
-Manual driving depends on the operator observing the environment; it does not automatically avoid obstacles. A front-facing camera cannot establish rear clearance. The console stops commands when its connection or required sensor data becomes stale, but it is not a safety-certified controller and depends on the robot driver's own timeout behavior.
-
-Manual speed settings are independent of autonomous navigation settings. Forward/reverse are adjustable from **0–1.00 m/s**; turning from **0–2.00 rad/s**, shared by left and right. The angular range is an application setting, not a measured chassis rating. Saving limits stops and disarms the robot.
-
-## Repository scope
+## Scope and validation
 
 ```text
-robot/          Python control service, ROS launch/configuration, static web UI
-scripts/        Local-only preview, installation, SSH tunnel helper
-tests/          Hardware-free control, map export, and localization checks
-docs/           English/Chinese guides and synthetic preview screenshots
+robot/          Robot services, launch/configuration and bilingual web UI
+robot/integration/  Focused driver patch, source verification and provenance
+companion/      Computer gateway, video recording, verified archival
+harness/        Capabilities, stationary diagnostics, offline export/recovery
+scripts/        Connect, deploy, install, rollback and synthetic preview
+tests/          Synthetic, hardware-free regression tests
+docs/           English/Chinese guides and synthetic screenshots
 ```
 
-Runtime maps, logs, camera recordings, machine addresses, passwords, and saved robot settings are not part of the repository. The ignore rules exclude generated state; review new files before publishing your own fork.
+The target is ROS 2 Humble on Ubuntu 22.04 / ARM64 Jetson with the vendor LIMO workspace installed separately. This is an independent project, not an official AgileX product. The repository contains only console code and integration material: no private recordings, household maps, credentials, firmware or full vendor workspace.
+
+The services bind to loopback and rely on SSH access. Manual driving relies on operator clearance judgment. The chassis driver needs its own watchdog. Software tests and a fresh map do not certify motion accuracy: [acceptance criteria](docs/harness.md) explicitly separate static checks from route and exploration tests, which require a charged robot and a suitable area.
 
 ## License
 
-The console's original code is available under the [GNU GPL v3.0 license (GPL-3.0-only)](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream integrations and the Nav2-derived configuration. Limo Console is an independent project and is not an official AgileX product.
+Original console code: [GNU GPL v3.0 (GPL-3.0-only)](LICENSE). Adapted upstream configuration and driver-patch context retain the licenses listed in [third-party notices](THIRD_PARTY_NOTICES.md).
