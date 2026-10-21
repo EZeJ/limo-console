@@ -6,7 +6,7 @@ English · [简体中文](README.zh-CN.md)
 
 Camera and lidar share one view. Set your forward, reverse and turning limits, map manually or use checked Nav2 goals, and keep synchronized recordings on your computer. The interface has no cloud service, CDN or frontend build step.
 
-![Limo Console — synthetic preview](docs/console-en.jpg)
+![Limo Console — synthetic preview](docs/console-en.png)
 
 ## Recording belongs to the operator
 

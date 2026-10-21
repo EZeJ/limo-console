@@ -6,7 +6,7 @@
 
 摄像头与雷达并排显示。自行设置前进、后退和转向上限，手动建图或使用经过路径检查的 Nav2 导航，把同步数据保存在电脑上。无需云服务、CDN 或前端构建工具。
 
-![Limo Console — 模拟预览](docs/console-zh.jpg)
+![Limo Console — 模拟预览](docs/console-zh.png)
 
 ## 录制由用户决定
 
