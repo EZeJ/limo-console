@@ -1,8 +1,8 @@
 # Third-party notices / 第三方声明
 
-The original console application is MIT-licensed. The robot stack is installed separately and retains its own licenses. No vendor firmware, driver source, pretrained model, or operating-system image is distributed here.
+The original console application is licensed under GNU GPL v3.0 (GPL-3.0-only). The robot stack is installed separately and retains its own licenses. No vendor firmware, driver source, pretrained model, or operating-system image is distributed here.
 
-控制台原创代码采用 MIT 许可证。机器人软件栈单独安装，遵循各自许可证。本仓库不分发厂商固件、驱动源码、预训练模型或操作系统镜像。
+控制台原创代码采用 GNU GPL v3.0 许可证（GPL-3.0-only）。机器人软件栈单独安装，遵循各自许可证。本仓库不分发厂商固件、驱动源码、预训练模型或操作系统镜像。
 
 - **AgileX LIMO:** [limo_ros2](https://github.com/agilexrobotics/limo_ros2/tree/humble) provides robot messages and hardware drivers. LIMO and AgileX names identify compatibility; no affiliation or endorsement is implied.
 - **Navigation2:** [Navigation2 Humble](https://github.com/ros-navigation/navigation2/tree/humble). `robot/nav2_params.yaml` is adapted from the upstream Nav2 example configuration, with LIMO footprint, controller limits, return controllers, and local integration changes. The adapted configuration is distributed under Apache-2.0; see [the license text](LICENSES/Apache-2.0.txt). Original upstream notices remain applicable.

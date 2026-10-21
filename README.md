@@ -82,4 +82,4 @@ Runtime maps, logs, camera recordings, machine addresses, passwords, and saved r
 
 ## License
 
-The console's original code is available under the [MIT license](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream integrations and the Nav2-derived configuration. Limo Console is an independent project and is not an official AgileX product.
+The console's original code is available under the [GNU GPL v3.0 license (GPL-3.0-only)](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for upstream integrations and the Nav2-derived configuration. Limo Console is an independent project and is not an official AgileX product.

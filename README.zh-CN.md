@@ -82,4 +82,4 @@ docs/           中英文指南与模拟界面截图
 
 ## 许可证
 
-控制台原创代码采用 [MIT 许可证](LICENSE)。上游集成与基于 Nav2 的配置说明见[第三方声明](THIRD_PARTY_NOTICES.md)。Limo Console 是独立项目，并非 AgileX 官方产品。
+控制台原创代码采用 [GNU GPL v3.0 许可证（GPL-3.0-only）](LICENSE)。上游集成与基于 Nav2 的配置说明见[第三方声明](THIRD_PARTY_NOTICES.md)。Limo Console 是独立项目，并非 AgileX 官方产品。
