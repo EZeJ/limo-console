@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const view=require('../robot/web/data-model.js');
+const first={instance_id:'one',trajectory:[[0,1,2,.1,0,null],[1,2,2,.2,0,.1]],time_offset_s:0,frame_count:2};
+const empty={instance_id:'two',trajectory:[],time_offset_s:2,frame_count:0};
+const last={instance_id:'three',trajectory:[[0,20,30,.3,1,null],[2,21,31,.2,1,-.1]],time_offset_s:10,frame_count:3};
+const session={scope:'session',segments:[first,empty,last]};
+const series=view.series(session);
+assert.equal(series.length,3,'Keep segment boundaries rather than drawing a fictitious connecting path');
+assert.deepEqual(series[2].rows.map(row=>row[0]),[10,12],'Preserve recorded time gaps on the overview chart');
+assert.equal(last.trajectory[0][0],0,'Overview must not change original segment data');
+assert.equal(view.nextPlayable(session.segments,0),2,'Continuous playback skips segments without video');
+assert.equal(view.nextPlayable(session.segments,2),-1,'Stop after the recording, without looping');
+const long={...first,trajectory:Array.from({length:12000},(_,i)=>[i,i,0,0,0,null])};
+const sampled=view.series({scope:'session',segments:[long,last]});
+assert.ok(sampled[0].rows.length<9000);assert.equal(sampled[0].rows.at(-1)[0],11999);
+console.log('Session timeline boundaries, overview sampling and continuous playback selection passed.');

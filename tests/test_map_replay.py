@@ -28,7 +28,7 @@ class MapReplayTests(unittest.TestCase):
             self.assertTrue(info['alignment_available']);self.assertEqual(info['odom_to_map'][:2],[2,3])
             self.assertAlmostEqual(info['odom_to_map'][2],math.pi/2)
             self.assertAlmostEqual(info['origin'][2],math.pi/2)
-            with Image.open(root/'map.png') as image:self.assertEqual(list(image.getdata()),[225,145,250,42])
+            with Image.open(root/'map.png') as image:self.assertEqual(list(image.tobytes()),[225,145,250,42])
             self.assertEqual(report['topics'],{'/map':1})
 
     def test_missing_transform_is_not_assumed_identity(self):

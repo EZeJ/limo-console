@@ -9,12 +9,17 @@ import threading
 import os
 import uuid
 import zipfile
-from .archive import checked,sha256_file,sync_dir
+from .archive import checked,sha256_file,sync_dir,atomic_json
 
 class Datasets:
     def __init__(self,root):
         self.root=Path(root).resolve();self.jobs={};self.bundles={};self.lock=threading.Lock();self.export_slot=threading.Semaphore(1)
+    def session_folder(self,session):
+        path=self.root/checked(session)
+        if path.is_symlink() or not path.is_dir() or not path.resolve().is_relative_to(self.root):raise ValueError('Recording not found')
+        return path
     def folder(self,session,instance):
+        if instance is None:return self.session_folder(session)
         path=self.root/checked(session)/checked(instance)
         if path.is_symlink() or path.parent.is_symlink() or not path.is_dir() or not path.resolve().is_relative_to(self.root):raise ValueError('Recording not found')
         return path
@@ -51,7 +56,7 @@ class Datasets:
                 files.append({'name':name,'bytes':path.stat().st_size})
             if path.name.endswith('.manifest.json') and path.parent.name=='sensors':
                 counts.update(json.loads(path.read_text()).get('counts',{}))
-        trajectory=[];events=[]
+        trajectory=[];events=[];t0=None
         odometry=root/'odometry.csv'
         if odometry.exists():
             with self.file(session,instance,'odometry.csv').open() as file:
@@ -67,7 +72,7 @@ class Datasets:
         map_info=None
         if (root/'map.json').is_file() and (root/'map.png').is_file():
             map_info=json.loads(self.file(session,instance,'map.json').read_text())
-        return {'manifest':manifest,'files':files,'topics':dict(counts),'trajectory':trajectory,'events':events,
+        return {'manifest':manifest,'files':files,'topics':dict(counts),'trajectory':trajectory,'trajectory_start_ns':t0,'events':events,
                 'map':map_info,
                 'source_directory':str(root),'bundle':self.bundles.get((session,instance),{'state':'not_bundled'}),
                 'frame_count':len(frames),'duration_s':float(frames[-1]['pts_us'])/1e6 if frames else 0,
@@ -124,7 +129,9 @@ class Datasets:
         def work():
             with self.export_slot:
                 try:
-                    folder=self.root/'.downloads';folder.mkdir(exist_ok=True,mode=0o700)
+                    folder=self.root/'.downloads'
+                    if folder.is_symlink():raise ValueError('Invalid download folder')
+                    folder.mkdir(exist_ok=True,mode=0o700)
                     files=[(self.file(session,instance,str(p.relative_to(root))),str(p.relative_to(root))) for p in root.rglob('*') if p.is_file()]
                     configuration=root.parent/'configuration.json'
                     if configuration.is_file() and not configuration.is_symlink():files.append((configuration,'_session/configuration.json'))
@@ -146,3 +153,109 @@ class Datasets:
         path=self.root/'.downloads'/info['filename']
         if path.is_symlink() or not path.is_file():raise ValueError('Package is not available')
         return path
+
+    def session_instances(self,session):
+        root=self.session_folder(session)
+        instances=[]
+        for path in sorted(root.glob('*/manifest.json')):
+            self.manifest(session,path.parent.name)
+            instances.append(path.parent.name)
+        if not instances:raise ValueError('No recorded instances in this session')
+        return instances
+
+    def describe_session(self,session):
+        root=self.session_folder(session)
+        segments=[];counts=Counter();files=[];events=[]
+        for instance in self.session_instances(session):
+            value=self.describe(session,instance)
+            value['instance_id']=instance;segments.append(value)
+            counts.update(value['topics'])
+            files.extend(dict(file,instance=instance) for file in value['files'])
+            events.extend(dict(event,instance_id=instance) for event in value['events'])
+        # Configuration and batch reports belong to the recording, not any one segment.
+        for name in ['configuration.json','exports/instances.csv','exports/validation.json']:
+            try:path=self.file(session,None,name)
+            except ValueError:continue
+            files.append({'name':name,'bytes':path.stat().st_size,'instance':None})
+        origins=[s['trajectory_start_ns'] for s in segments if s['trajectory_start_ns'] is not None]
+        origin=min(origins) if origins else 0
+        for segment in segments:
+            segment['time_offset_s']=(segment['trajectory_start_ns']-origin)/1e9 if segment['trajectory_start_ns'] is not None else 0
+        closed=all(s['manifest'].get('video_closed') for s in segments)
+        saved_export={'state':'not_exported'}
+        try:saved_export=json.loads(self.file(session,None,'exports/validation.json').read_text())
+        except (OSError,ValueError):pass
+        return {'scope':'session','session_id':session,'segments':segments,'files':files,'topics':dict(counts),'events':events,
+                'source_directory':str(root),'frame_count':sum(s['frame_count'] for s in segments),
+                'duration_s':sum(s['duration_s'] for s in segments),'closed':closed,
+                'export':self.jobs.get((session,None),saved_export),
+                'bundle':self.bundles.get((session,None),{'state':'not_bundled'})}
+
+    def closed_session(self,session):
+        instances=self.session_instances(session)
+        if not all(self.manifest(session,i).get('video_closed') for i in instances):
+            raise ValueError('End this recording before processing the whole session')
+        return instances
+
+    def export_session(self,session):
+        instances=self.closed_session(session);root=self.session_folder(session);key=(session,None)
+        with self.lock:
+            if self.jobs.get(key,{}).get('state') in ('queued','running'):return self.jobs[key]
+            self.jobs[key]={'state':'queued','instances_done':0,'instances_total':len(instances),'results':[]}
+        def work():
+            with self.export_slot:
+                job=self.jobs[key];job['state']='running'
+                try:
+                    from harness.replay import inspect
+                    for instance in instances:
+                        try:
+                            report=inspect(self.folder(session,instance),export=True)
+                            result={'instance_id':instance,'state':'done','report':report}
+                        except Exception as exc:result={'instance_id':instance,'state':'error','error':str(exc)}
+                        self.jobs[(session,instance)]=dict(result)
+                        job['results'].append(result);job['instances_done']+=1
+                    destination=root/'exports'
+                    if destination.is_symlink():raise ValueError('Invalid export folder')
+                    destination.mkdir(exist_ok=True)
+                    rows=[]
+                    for result in job['results']:
+                        manifest=self.manifest(session,result['instance_id']);report=result.get('report',{})
+                        rows.append([session,result['instance_id'],manifest.get('name',''),manifest.get('status',''),
+                                     manifest.get('video_frames',0),result['state'],report.get('complete_received_stream',''),
+                                     sum(report.get('topics',{}).values()),result.get('error','')])
+                    target=destination/'instances.csv';temporary=destination/(uuid.uuid4().hex+'.partial')
+                    with temporary.open('x',newline='') as file:
+                        writer=csv.writer(file);writer.writerow(['session_id','instance_id','name','status','video_frames','export_state','complete_received_stream','received_samples','error'])
+                        writer.writerows(rows);file.flush();os.fsync(file.fileno())
+                    os.replace(temporary,target);sync_dir(destination)
+                    job['state']='partial' if any(r['state']=='error' for r in job['results']) else 'done'
+                    atomic_json(destination/'validation.json',{'session_id':session,**job})
+                except Exception as exc:job.update(state='error',error=str(exc))
+        threading.Thread(target=work,daemon=True).start()
+        return self.jobs[key]
+
+    def bundle_session(self,session):
+        self.closed_session(session);root=self.session_folder(session);key=(session,None)
+        with self.lock:
+            if self.bundles.get(key,{}).get('state') in ('queued','running'):return self.bundles[key]
+            self.bundles[key]={'state':'queued'}
+        def work():
+            temporary=None
+            with self.export_slot:
+                try:
+                    folder=self.root/'.downloads'
+                    if folder.is_symlink():raise ValueError('Invalid download folder')
+                    folder.mkdir(exist_ok=True,mode=0o700)
+                    files=[(self.file(session,None,str(p.relative_to(root))),str(p.relative_to(root))) for p in sorted(root.rglob('*')) if p.is_file()]
+                    target=folder/(session+'.zip');temporary=folder/(uuid.uuid4().hex+'.partial')
+                    job={'state':'running','files_done':0,'files_total':len(files)};self.bundles[key]=job
+                    with zipfile.ZipFile(temporary,'x',compression=zipfile.ZIP_STORED,allowZip64=True) as archive:
+                        for path,name in files:archive.write(path,name);job['files_done']+=1
+                    with temporary.open('rb') as file:os.fsync(file.fileno())
+                    os.replace(temporary,target);sync_dir(folder)
+                    self.bundles[key]={'state':'done','filename':target.name,'bytes':target.stat().st_size,'sha256':sha256_file(target)}
+                except Exception as exc:
+                    self.bundles[key]={'state':'error','error':str(exc)}
+                    if temporary is not None:temporary.unlink(missing_ok=True)
+        threading.Thread(target=work,daemon=True).start()
+        return self.bundles[key]

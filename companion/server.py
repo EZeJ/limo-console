@@ -93,7 +93,7 @@ def make_handler(gateway,port):
         def do_GET(self):
             if not self.valid():return self.answer({'error':'Host rejected'},403)
             path=urlsplit(self.path).path
-            static={'/data':'data.html','/data.html':'data.html','/data.js':'data.js','/data.css':'data.css',
+            static={'/data':'data.html','/data.html':'data.html','/data.js':'data.js','/data-model.js':'data-model.js','/data.css':'data.css',
                     '/messages.js':'messages.js','/i18n.js':'i18n.js','/style.css':'style.css'}
             if path=='/' and gateway.browse_only:path='/data'
             if path in static:
@@ -102,7 +102,8 @@ def make_handler(gateway,port):
                 try:
                     query=parse_qs(urlsplit(self.path).query)
                     if path=='/local/data':return self.answer(gateway.datasets.catalog())
-                    session,instance=query['session'][0],query['instance'][0]
+                    session,instance=query['session'][0],query.get('instance',[None])[0]
+                    if path=='/local/data/session':return self.answer(gateway.datasets.describe_session(session))
                     if path=='/local/data/detail':return self.answer(gateway.datasets.describe(session,instance))
                     if path=='/local/data/file':return self.send_file(gateway.datasets.file(session,instance,query['file'][0]))
                     if path=='/local/data/bundle':return self.send_file(gateway.datasets.bundle_file(session,instance))
@@ -153,10 +154,12 @@ def make_handler(gateway,port):
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<=length<=16384:raise ValueError('Request too large')
                 body=self.rfile.read(length);data=json.loads(body or b'{}')
+                if self.path=='/local/data/session/export':return self.answer(gateway.datasets.export_session(data['session']),202)
+                if self.path=='/local/data/session/package':return self.answer(gateway.datasets.bundle_session(data['session']),202)
                 if self.path=='/local/data/export':return self.answer(gateway.datasets.export(data['session'],data['instance']),202)
                 if self.path=='/local/data/package':return self.answer(gateway.datasets.bundle(data['session'],data['instance']),202)
                 if self.path=='/local/data/open-folder':
-                    folder=gateway.datasets.folder(data['session'],data['instance'])
+                    folder=gateway.datasets.folder(data['session'],data.get('instance'))
                     subprocess.Popen(['open' if sys.platform=='darwin' else 'xdg-open',str(folder)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     return self.answer({'opened':str(folder)})
                 if gateway.browse_only:return self.answer({'error':'Data browsing only; no robot connection'},403)
