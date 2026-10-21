@@ -703,6 +703,13 @@
                   ><span>+</span>
                 </summary>
                 <div class="nav-controls">
+                  <p class="setting-note" data-i18n="Load a saved map using the robot's actual pose on that map. Loading never sends a driving goal.">Load a saved map using the robot's actual pose on that map. Loading never sends a driving goal.</p>
+                  <div class="recording-settings-grid">
+                    <label>X (m)<input id="localizeX" type="number" step="0.01" /></label>
+                    <label>Y (m)<input id="localizeY" type="number" step="0.01" /></label>
+                    <label><span data-i18n="Heading (degrees)">Heading (degrees)</span><input id="localizeYaw" type="number" step="1" /></label>
+                  </div>
+                  <button id="loadSavedMap" class="secondary" data-i18n="Load saved map & localize">Load saved map &amp; localize</button>
                   <span id="navPhase" class="nav-detail"></span
                   ><button
                     id="applyMapping"

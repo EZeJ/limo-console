@@ -1,5 +1,7 @@
 """Stationary SLAM lifecycle and portable map export; no movement goals are sent."""
 import io
+import json
+import math
 import re
 import subprocess
 import threading
@@ -48,9 +50,10 @@ class MappingControl:
         self.error = ''
         self.last_saved = None
         self.started_at = None
+        self.loaded_map = None
 
     def fresh(self):
-        return self.navigation.grid is not None and time.monotonic()-self.navigation.last_map < 10
+        return not getattr(self.navigation,'map_is_static',False) and self.navigation.grid is not None and time.monotonic()-self.navigation.last_map < 10
 
     def status(self):
         active = self.fresh()
@@ -71,6 +74,7 @@ class MappingControl:
                     localization_available=localized,
                     statistics=getattr(self.navigation,'map_statistics',{}),
                     route_accuracy_verified=False,
+                    loaded_map=self.loaded_map,
                     map=dict(width=grid['width'], height=grid['height'], resolution=grid['resolution']) if grid else None)
 
     def list_maps(self):
@@ -91,7 +95,7 @@ class MappingControl:
 
     def command(self, *arguments):
         result = self.runner(['bash', str(self.workspace / 'manage.sh'), *arguments],
-                             capture_output=True, text=True, timeout=40)
+                             capture_output=True, text=True, timeout=75)
         if result.returncode:
             detail = (result.stderr or result.stdout or 'Service did not start')[-240:].strip()
             raise ValueError('Mapping operation failed: '+detail)
@@ -105,14 +109,25 @@ class MappingControl:
             raise ValueError('Map save did not produce complete files. Please retry.')
         with self.lock:
             self.last_saved = name
+        metadata={'name':name,'saved_at':time.time(),'route_accuracy_verified':False}
+        try:
+            from navigation_core import transform_pose
+            metadata['saved_pose']=transform_pose(self.navigation.odom_pose(),self.navigation.transform())
+        except (ValueError,AttributeError):pass
+        (self.maps/(name+'.json')).write_text(json.dumps(metadata,indent=2))
 
-    def request(self, action, name=None, backend=None):
+    def request(self, action, name=None, backend=None, pose=None):
         if self.busy or self.navigation.preparing:
             raise ValueError('A mapping operation is in progress. Please wait.')
-        if action not in ('start', 'save', 'stop'):
+        if action not in ('start', 'save', 'stop', 'load'):
             raise ValueError('Unknown mapping operation.')
         if backend is not None and backend not in ('cartographer', 'slam_toolbox'):
             raise ValueError('Unsupported mapping engine.')
+        if action=='load':
+            if self.fresh():raise ValueError('Save and finish current mapping before loading a map')
+            if not all(p.is_file() for p in map_paths(self.maps,name)):raise ValueError('Saved map not found')
+            if not isinstance(pose,list) or len(pose)!=3 or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in pose):
+                raise ValueError('Provide the robot pose on the saved map: x, y and heading in radians')
         if action == 'start' and (self.fresh() or self.status()['waiting']):
             return
         if action == 'save' and not self.fresh():
@@ -127,8 +142,10 @@ class MappingControl:
         self.operation = action
         self.error = ''
         self.message = {'start': 'Starting mapping. Waiting for the first map…',
-                        'save': 'Saving map…', 'stop': 'Saving and finishing mapping…'}[action]
+                        'save': 'Saving map…', 'stop': 'Saving and finishing mapping…',
+                        'load':'Loading map and localization…'}[action]
         if action == 'start':
+            self.navigation.map_is_static=False;self.loaded_map=None
             self.navigation.grid = self.navigation.png = None
             self.navigation.last_map = float('-inf')
             self.started_at = time.monotonic()
@@ -138,6 +155,12 @@ class MappingControl:
                 if action == 'start':
                     self.command('map-start', backend or 'cartographer')
                     message = 'Mapping started. Waiting for the map…'
+                elif action=='load':
+                    self.navigation.grid=self.navigation.png=None
+                    self.navigation.map_is_static=True
+                    self.command('navigate',name,*[str(v) for v in pose])
+                    self.loaded_map=name
+                    message='Map loaded. Check localization before driving.'
                 else:
                     if should_save:
                         self.save(name)

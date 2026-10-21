@@ -191,9 +191,9 @@ class Control(Node):
                 limits = save_limits(self.speed_settings_path, data.get('forward'), data.get('reverse'),
                                      data.get('angular', self.gate.manual_limits['angular']))
                 self.gate.set_manual_limits(**limits)
-            elif path in ('/mapping/start', '/mapping/save', '/mapping/stop'):
+            elif path in ('/mapping/start', '/mapping/save', '/mapping/stop','/mapping/load'):
                 self.stop_motion()
-                self.mapping.request(path.rsplit('/', 1)[-1], data.get('name'), data.get('backend'))
+                self.mapping.request(path.rsplit('/', 1)[-1], data.get('name'), data.get('backend'),data.get('pose'))
             elif path == '/arm':
                 if data.get('mode') == 'navigation':
                     self.lidar.require_scanning()

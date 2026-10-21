@@ -907,6 +907,7 @@ function renderMapping(s) {
     working || m.active || m.waiting || !s.lidar_online || !s.chassis_online;
   $("#saveMapping").disabled = working || !m.active;
   $("#stopMapping").disabled = working || !(m.active || m.waiting || m.error);
+  $("#loadSavedMap").disabled = working || m.active || m.waiting || !$("#savedMaps").value;
   $("#mappingEngine").disabled = working || m.active || m.waiting;
   if (m.map) {
     const g = m.map;
@@ -940,7 +941,9 @@ async function mapAction(action) {
       ? { backend: $("#mappingEngine").value }
       : action === "save"
         ? { name: $("#mapName").value.trim() || null }
-        : {};
+        : action === "load"
+          ? {name: $("#savedMaps").value, pose: [$("#localizeX").value, $("#localizeY").value, $("#localizeYaw").value].map((v, i) => v.trim() === "" ? null : Number(v) * (i === 2 ? Math.PI / 180 : 1))}
+          : {};
   try {
     const s = await api("/mapping/" + action, data);
     mapMessage = t("Operation requested. Waiting for completion…");
@@ -958,6 +961,7 @@ async function mapAction(action) {
 $("#startMapping").onclick = () => mapAction("start");
 $("#saveMapping").onclick = () => mapAction("save");
 $("#stopMapping").onclick = () => mapAction("stop");
+$("#loadSavedMap").onclick = () => mapAction("load");
 function updateMapDownload() {
   const name = $("#savedMaps").value;
   $("#downloadMap").hidden = !name;

@@ -114,6 +114,8 @@ case "${1:-status}" in
     [[ "${2:-}" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Use a map name containing letters, numbers, _ or -'; exit 1; }
     [ ! -e "/control/maps/$2.yaml" ] || { echo 'Map already exists; choose a new name'; exit 1; }
     ros2 run nav2_map_server map_saver_cli -f "/control/maps/$2" --ros-args -p save_map_timeout:=15.0
+    engine=$(cat /control/mapping-engine 2>/dev/null || echo cartographer)
+    python3 /control/map_checkpoint.py save "$engine" "/control/maps/$2"
     ;;
   navigate)
     [[ "${2:-}" =~ ^[A-Za-z0-9_-]+$ ]] && [ -f "/control/maps/$2.yaml" ] || { echo 'Saved map not found'; exit 1; }
@@ -123,6 +125,7 @@ case "${1:-status}" in
     halt rviz
     base
     run navigation ros2 launch nav2_bringup bringup_launch.py map:="/control/maps/$2.yaml" params_file:=/control/nav2_params.yaml use_sim_time:=false use_composition:=False autostart:=true
+    python3 /control/map_checkpoint.py localize "$3" "$4" "$5"
     ;;
   stop) stop_motion ;;
   shutdown)

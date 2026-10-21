@@ -38,6 +38,7 @@ class Navigation:
         self.follow = ActionClient(control, FollowPath, '/follow_path')
         self.planner = ActionClient(control, ComputePathToPose, '/compute_path_to_pose')
         self.grid = None
+        self.map_is_static = False
         self.png = None
         self.revision = 0
         self.content_revision = 0
@@ -152,7 +153,7 @@ class Navigation:
 
     def ready(self):
         now = time.monotonic()
-        return (self.grid is not None and now-self.last_map < 10 and
+        return (self.grid is not None and (self.map_is_static or now-self.last_map < 10) and
                 self.goto.server_is_ready() and self.follow.server_is_ready() and
                 all(self.lifecycle.get(n, (False, 0))[0] and now-self.lifecycle[n][1] < 4
                     for n in self.lifecycle_clients))

@@ -1,5 +1,13 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Heading (degrees)": "朝向（度）",
+  "Load saved map & localize": "加载地图并定位",
+  "Load a saved map using the robot's actual pose on that map. Loading never sends a driving goal.": "填写机器人在所选地图上的实际位置和朝向。加载地图只启动定位，不会发出驾驶目标。",
+  "Save and finish current mapping before loading a map": "请先保存并结束当前建图，再加载地图",
+  "Provide the robot pose on the saved map: x, y and heading in radians": "请填写机器人在所选地图上的 X、Y 和朝向",
+  "Loading map and localization…": "正在加载地图与定位…",
+  "Map loaded. Check localization before driving.": "地图已加载，请确认定位后再启用驾驶。",
+  "Saved map not found": "找不到已保存的地图",
   "Known free area {0} m² · Localization {1} · Route accuracy needs a driving test": "已知空地 {0} m² · 定位{1} · 路线精度需通过行驶测试验证",
   "No footprint-safe reachable frontier. Stopped; continue manual mapping to reveal a route.": "没有满足车身净空要求的可达探索边界。已停车；请先手动补充地图，找到可通行路线。",
   "Map did not change after reaching the target. Stopped; inspect scan and localization health.": "到达目标后地图没有变化。已停车；请检查雷达与定位状态。",
