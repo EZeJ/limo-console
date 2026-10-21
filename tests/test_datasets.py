@@ -1,4 +1,4 @@
-import csv,json,tempfile,threading,unittest
+import csv,json,tempfile,threading,unittest,time,zipfile
 from pathlib import Path
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.request import Request,urlopen
@@ -21,6 +21,19 @@ class DatasetTests(unittest.TestCase):
             with self.assertRaises(ValueError):self.store.file(session,instance,name)
         (self.folder/'escape').symlink_to('/etc/passwd')
         with self.assertRaises(ValueError):self.store.file('session','instance','escape')
+    def test_package_contains_original_files_and_source_configuration(self):
+        (self.folder/'camera.mp4').write_bytes(b'original-video-bytes')
+        (self.folder.parent/'configuration.json').write_text('{"version":1}')
+        self.store.bundle('session','instance')
+        deadline=time.monotonic()+3
+        while self.store.bundles[('session','instance')]['state'] in ('queued','running') and time.monotonic()<deadline:time.sleep(.01)
+        path=self.store.bundle_file('session','instance')
+        with zipfile.ZipFile(path) as archive:
+            self.assertEqual(archive.read('camera.mp4'),b'original-video-bytes')
+            self.assertIn('_session/configuration.json',archive.namelist())
+            self.assertIsNone(archive.testzip())
+        self.assertTrue((self.folder/'camera.mp4').is_file())
+
     def test_video_range_seeking_and_idle_browsing(self):
         (self.folder/'camera.mp4').write_bytes(b'0123456789')
         gateway=Gateway(None,self.root);server=ThreadingHTTPServer(('127.0.0.1',0),BaseHTTPRequestHandler);server.RequestHandlerClass=make_handler(gateway,server.server_port)

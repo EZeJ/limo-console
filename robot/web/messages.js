@@ -1,5 +1,13 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Source folder": "源文件位置",
+  "Open source folder": "打开源文件夹",
+  "Package instance ZIP": "打包当前实例 ZIP",
+  "Download ZIP": "下载 ZIP",
+  "Packaging…": "正在打包…",
+  "Package queued": "打包已排队",
+  "Finish this instance before packaging": "请先结束或分割当前实例，再打包下载",
+
   "Scanning in place: linear speed is zero. Turning briefly, then stopping to replan.": "正在原地补扫：线速度为零。短暂转向后停车，重新规划。",
   "In-place scan turn timed out": "原地补扫转向超时",
   "In-place scan turn deviated from its position. Stopped.": "原地转向发生位置偏移，已停车。",

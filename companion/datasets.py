@@ -6,11 +6,14 @@ import json
 import math
 from pathlib import Path
 import threading
-from .archive import checked
+import os
+import uuid
+import zipfile
+from .archive import checked,sha256_file,sync_dir
 
 class Datasets:
     def __init__(self,root):
-        self.root=Path(root).resolve();self.jobs={};self.lock=threading.Lock();self.export_slot=threading.Semaphore(1)
+        self.root=Path(root).resolve();self.jobs={};self.bundles={};self.lock=threading.Lock();self.export_slot=threading.Semaphore(1)
     def folder(self,session,instance):
         path=self.root/checked(session)/checked(instance)
         if path.is_symlink() or path.parent.is_symlink() or not path.is_dir() or not path.resolve().is_relative_to(self.root):raise ValueError('Recording not found')
@@ -62,6 +65,7 @@ class Datasets:
             with self.file(session,instance,'events.csv').open() as file:events=list(csv.DictReader(file))[-100:]
         frames=self.frame_table(session,instance)
         return {'manifest':manifest,'files':files,'topics':dict(counts),'trajectory':trajectory,'events':events,
+                'source_directory':str(root),'bundle':self.bundles.get((session,instance),{'state':'not_bundled'}),
                 'frame_count':len(frames),'duration_s':float(frames[-1]['pts_us'])/1e6 if frames else 0,
                 'export':self.jobs.get((session,instance),{'state':'done' if odometry.exists() else 'not_exported'})}
     def frame_table(self,session,instance):
@@ -105,3 +109,36 @@ class Datasets:
                 except Exception as exc:self.jobs[key]={'state':'error','error':str(exc)}
         threading.Thread(target=work,daemon=True).start()
         return self.jobs[key]
+
+    def bundle(self,session,instance):
+        root=self.folder(session,instance);manifest=self.manifest(session,instance)
+        if not manifest.get('video_closed'):raise ValueError('Finish this instance before packaging')
+        key=(session,instance)
+        with self.lock:
+            if self.bundles.get(key,{}).get('state') in ('queued','running'):return self.bundles[key]
+            self.bundles[key]={'state':'queued'}
+        def work():
+            with self.export_slot:
+                try:
+                    folder=self.root/'.downloads';folder.mkdir(exist_ok=True,mode=0o700)
+                    files=[(self.file(session,instance,str(p.relative_to(root))),str(p.relative_to(root))) for p in root.rglob('*') if p.is_file()]
+                    configuration=root.parent/'configuration.json'
+                    if configuration.is_file() and not configuration.is_symlink():files.append((configuration,'_session/configuration.json'))
+                    target=folder/(session+'_'+instance+'.zip');temporary=folder/(uuid.uuid4().hex+'.partial')
+                    job={'state':'running','files_done':0,'files_total':len(files)};self.bundles[key]=job
+                    with zipfile.ZipFile(temporary,'x',compression=zipfile.ZIP_STORED,allowZip64=True) as archive:
+                        for path,name in files:archive.write(path,name);job['files_done']+=1
+                    with temporary.open('rb') as file:os.fsync(file.fileno())
+                    os.replace(temporary,target);sync_dir(folder)
+                    self.bundles[key]={'state':'done','filename':target.name,'bytes':target.stat().st_size,'sha256':sha256_file(target)}
+                except Exception as exc:self.bundles[key]={'state':'error','error':str(exc)}
+        threading.Thread(target=work,daemon=True).start()
+        return self.bundles[key]
+
+    def bundle_file(self,session,instance):
+        self.folder(session,instance)
+        info=self.bundles.get((session,instance),{})
+        if info.get('state')!='done':raise ValueError('Package is not ready')
+        path=self.root/'.downloads'/info['filename']
+        if path.is_symlink() or not path.is_file():raise ValueError('Package is not available')
+        return path

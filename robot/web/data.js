@@ -40,6 +40,12 @@ function renderDetail() {
   const m=detail.manifest, p=m.camera_profile || {};
   $('#dataTitle').textContent=m.name || m.instance_id;
   $('#dataMeta').textContent=`${t(m.status || 'unknown')} · ${detail.duration_s.toFixed(1)} s · ${detail.frame_count} ${t('frames')} · ${p.width || '—'} × ${p.height || '—'} · ${p.fps || '—'} fps · ${(p.format || '').toUpperCase()}`;
+  $('#sourcePath').textContent=detail.source_directory;
+  const bundle=detail.bundle || {state:'not_bundled'};
+  $('#packageData').disabled=!m.video_closed || ['queued','running'].includes(bundle.state);
+  $('#packageDownload').hidden=bundle.state!=='done';
+  if(bundle.state==='done') { $('#packageDownload').href='/local/data/bundle?'+query(); $('#packageDownload').download=bundle.filename; }
+  $('#packageState').textContent=bundle.state==='done' ? size(bundle.bytes) : bundle.state==='running' ? t('Packaging…')+` ${bundle.files_done}/${bundle.files_total}` : bundle.state==='queued' ? t('Package queued') : bundle.error ? t(bundle.error) : '';
   $('#dataIncidents').textContent=(m.incidents || []).map(i=>t(i.reason)).join(' · ');
   $('#exportData').disabled=!m.video_closed || ['queued','running'].includes(detail.export.state);
   $('#exportState').textContent=t({queued:'Export queued',running:'Exporting and validating…',done:'CSV export available',error:'Export failed',not_exported:'Export CSV to inspect trajectory and metrics'}[detail.export.state] || 'Export CSV to inspect trajectory and metrics') + (detail.export.error ? ': '+t(detail.export.error) : '');
@@ -86,7 +92,10 @@ $('#exportData').onclick=async()=>{
 };
 async function pollExport() {
   const key=JSON.stringify(selected);
-  try { const result=await request('/local/data/detail?'+query());if(key!==JSON.stringify(selected))return;detail=result;renderDetail();if(['queued','running'].includes(detail.export.state))exportTimer=setTimeout(pollExport,1200); }catch(error){fail(error);}
+  try { const result=await request('/local/data/detail?'+query());if(key!==JSON.stringify(selected))return;detail=result;renderDetail();if(['queued','running'].includes(detail.export.state) || ['queued','running'].includes(detail.bundle?.state))exportTimer=setTimeout(pollExport,1200); }catch(error){fail(error);}
 }
 $('#dataSearch').oninput=renderCatalog;$('#refreshData').onclick=refresh;
 window.addEventListener('languagechange',()=>{renderCatalog();renderDetail();});refresh();
+
+$('#packageData').onclick=async()=>{try { detail.bundle=await request('/local/data/package',selected);renderDetail();pollExport(); }catch(error){fail(error);}};
+$('#openSourceFolder').onclick=()=>request('/local/data/open-folder',selected).catch(fail);

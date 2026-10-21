@@ -105,6 +105,7 @@ def make_handler(gateway,port):
                     session,instance=query['session'][0],query['instance'][0]
                     if path=='/local/data/detail':return self.answer(gateway.datasets.describe(session,instance))
                     if path=='/local/data/file':return self.send_file(gateway.datasets.file(session,instance,query['file'][0]))
+                    if path=='/local/data/bundle':return self.send_file(gateway.datasets.bundle_file(session,instance))
                     if path=='/local/data/frame':
                         data,kind=gateway.datasets.frame(session,instance,int(query['index'][0]))
                         self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
@@ -153,6 +154,11 @@ def make_handler(gateway,port):
                 if not 0<=length<=16384:raise ValueError('Request too large')
                 body=self.rfile.read(length);data=json.loads(body or b'{}')
                 if self.path=='/local/data/export':return self.answer(gateway.datasets.export(data['session'],data['instance']),202)
+                if self.path=='/local/data/package':return self.answer(gateway.datasets.bundle(data['session'],data['instance']),202)
+                if self.path=='/local/data/open-folder':
+                    folder=gateway.datasets.folder(data['session'],data['instance'])
+                    subprocess.Popen(['open' if sys.platform=='darwin' else 'xdg-open',str(folder)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    return self.answer({'opened':str(folder)})
                 if gateway.browse_only:return self.answer({'error':'Data browsing only; no robot connection'},403)
                 if self.path=='/local/recording/start':
                     threading.Thread(target=gateway.start,daemon=True).start()
