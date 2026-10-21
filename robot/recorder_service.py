@@ -102,7 +102,7 @@ def make_handler(node):
                 data=json.loads(self.rfile.read(length) or b'{}');r=node.recorder
                 if self.path=='/start':result=r.start(data['request_id'],data['owner'],data.get('metadata'))
                 elif self.path=='/next':result=r.split(data['request_id'],data['owner'],data.get('name',''))
-                elif self.path=='/finish':result=r.finish(data['owner'])
+                elif self.path=='/finish':result=r.finish(data['owner'],data.get('interrupted',False))
                 elif self.path=='/heartbeat':r.heartbeat(data['owner'],data.get('healthy',False));result=node.snapshot()
                 elif self.path=='/ack':result=r.acknowledge(data['chunk_id'],data['sha256'],data['bytes'])
                 else:return self.reply({'error':'Unknown recording endpoint'},404)
@@ -121,7 +121,7 @@ def main():
     except KeyboardInterrupt:pass
     finally:
         if node.recorder.active:
-            try:node.recorder.finish(node.recorder.owner)
+            try:node.recorder.finish(node.recorder.owner,interrupted=True)
             except Exception:pass
         server.shutdown();node.destroy_node()
         if rclpy.ok():rclpy.shutdown()

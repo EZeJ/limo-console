@@ -31,6 +31,7 @@ class Coordinator:
         self.last_archive_poll=0.;self.sensor_status={};self.operation={}
         self.warmup_started=time.monotonic();self.warmup_count=0
         self.incidents=[]
+        self.archive_lock=threading.Lock()
 
     def request(self,path,data=None,timeout=8):return json_request(self.base,path,data,timeout)
 
@@ -174,24 +175,34 @@ class Coordinator:
     def archive_loop(self):
         while not self.halt.is_set():
             try:
-                chunks=self.request('/recording/chunks')['chunks']
-                for chunk in chunks:
-                    path=archive_chunk(self.base,self.root,chunk)
-                    self.archived_chunks+=1;self.archived_bytes+=chunk['bytes'];self.last_archived=path
-                self.last_archive_poll=time.monotonic()
                 remote=self.request('/recording/instances')['instances']
+                with self.archive_lock:
+                    for chunk in self.request('/recording/chunks')['chunks']:
+                        path=archive_chunk(self.base,self.root,chunk)
+                        self.archived_chunks+=1;self.archived_bytes+=chunk['bytes'];self.last_archived=path
+                self.last_archive_poll=time.monotonic()
                 with self.lock:
                     by_id={item['instance_id']:item for item in remote}
                     for item in self.instances:
                         remote_item=by_id.get(item['instance_id'])
                         if remote_item:
                             item['sensor_status']=remote_item['status']
+                            item['sensors']=remote_item
                             if remote_item['status']!='recording' and self.writers[item['instance_id']].closed:
-                                item['status']='complete' if remote_item['status']=='complete' and not self.error else 'interrupted'
+                                item['status']=self.completion(item,remote_item)
                             self._persist(item)
             except Exception as exc:
                 if not self.halt.is_set():self.fault('Data archival failed: '+str(exc))
             self.halt.wait(1.)
+
+    def completion(self,item,remote):
+        chunks=remote.get('chunk_ids')
+        if chunks is None:return 'pending_verification'
+        for chunk_id in chunks:
+            receipt=Path(item['path'])/'sensors'/(checked(chunk_id)+'.manifest.json')
+            if not receipt.is_file() or not json.loads(receipt.read_text()).get('verified_on_computer'):
+                return 'pending_transfer'
+        return 'complete' if remote['status']=='complete' and not item['incidents'] else 'interrupted'
 
     def close(self,interrupted=True):
         if not self.active:return
@@ -199,8 +210,9 @@ class Coordinator:
         self.active=False
         try:self.request('/stop',{})
         except Exception:pass
-        try:self.request('/recording/finish',{'owner':self.owner},timeout=25)
-        except Exception:pass
+        finish_error=None
+        try:self.request('/recording/finish',{'owner':self.owner,'interrupted':interrupted},timeout=25)
+        except Exception as exc:finish_error=exc
         self.halt.set()
         for thread in self.threads:
             if thread is not threading.current_thread():thread.join(timeout=5)
@@ -212,10 +224,16 @@ class Coordinator:
                 item['status']='interrupted' if self.error else 'video_saved';self._persist(item)
         # The final closed chunks are also verified before deletion.
         try:
-            for chunk in self.request('/recording/chunks')['chunks']:archive_chunk(self.base,self.root,chunk)
+            with self.archive_lock:
+                for chunk in self.request('/recording/chunks')['chunks']:archive_chunk(self.base,self.root,chunk)
+            remote={item['instance_id']:item for item in self.request('/recording/instances')['instances']}
             with self.lock:
                 for item in self.instances:
-                    item['status']='interrupted' if self.error else 'complete';self._persist(item)
+                    sensor=remote.get(item['instance_id'])
+                    item['status']=self.completion(item,sensor) if sensor and sensor['status']!='recording' else 'pending_transfer'
+                    if sensor:item['sensors']=sensor
+                    if finish_error:item['finish_error']=str(finish_error)
+                    self._persist(item)
         except Exception as exc:
             self.error='Final data remains on the robot: '+str(exc)
             with self.lock:

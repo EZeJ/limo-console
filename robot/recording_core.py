@@ -198,9 +198,9 @@ class Recorder:
             if owner != self.owner or not self.active or self.error: raise ValueError('Recording is not ready')
         return self._command('split', dict(request_id=request_id, name=name))
 
-    def finish(self, owner):
+    def finish(self, owner, interrupted=False):
         if owner != self.owner: raise ValueError('Recording owner mismatch')
-        return self._command('finish', {})
+        return self._command('finish', {'interrupted':bool(interrupted)})
 
     def append(self, topic, typename, definition, data, *, latched=False):
         # Source samples are serialized ROS messages. Image streams are prohibited.
@@ -279,6 +279,8 @@ class Recorder:
         value = json.loads(path.read_text())
         value.update(status=status, ended_at=utc(), end_monotonic_ns=(boundary or {}).get('monotonic_ns',time.monotonic_ns()),
                      end_sequence=(boundary or {}).get('sequence',self.sequence))
+        value['chunk_ids']=[c['chunk_id'] for c in self.chunks.values()
+                            if c['session_id']==self.session and c['instance_id']==self.instance]
         atomic_json(path,value)
         self.completed.append(self.instance)
 
@@ -324,7 +326,7 @@ class Recorder:
                         self._end_instance('complete',payload['boundary'])
                         result=self._new_instance(payload['name'],payload['boundary'])
                     elif action == 'finish':
-                        self._end_instance('interrupted' if self.error else 'complete',payload['boundary'])
+                        self._end_instance('interrupted' if self.error or payload.get('interrupted') else 'complete',payload['boundary'])
                         self.active=False;self.pc_ok=False;self.writer_ready=False
                         result={'session_id':self.session,'status':'finished'}
                     else: raise ValueError('Unknown recorder command')
