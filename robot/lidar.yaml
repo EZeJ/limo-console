@@ -14,7 +14,7 @@ ydlidar_ros2_driver_node:
     auto_reconnect: true
     isSingleChannel: true
     intensity: false
-    # Data pause/resume does not verify or guarantee physical motor shutdown.
+    # This model does not expose verified software motor control.
     support_motor_dtr: false
     angle_max: 180.0
     angle_min: -180.0
