@@ -69,11 +69,13 @@ def make_handler(gateway,port):
             except HTTPError as exc:response=exc
             except (URLError,OSError,HTTPException) as exc:return self.answer({'error':'Robot connection unavailable: '+str(exc)},503)
             with response:
-                if urlsplit(self.path).path=='/status' and response.status==200:
-                    state=json.load(response);remote=state.get('recording',{});local=gateway.status()
-                    local['ready']=bool(local['healthy'] and remote.get('ready'))
-                    if remote.get('error') and not local['error']:local['error']=remote['error']
-                    state['recording']=local
+                if response.status==200 and response.headers.get_content_type()=='application/json':
+                    state=json.load(response)
+                    if isinstance(state,dict) and 'mode' in state and 'recording' in state:
+                        remote=state['recording'];local=gateway.status()
+                        local['ready']=bool(local['healthy'] and remote.get('ready'))
+                        if remote.get('error') and not local['error']:local['error']=remote['error']
+                        state['recording']=local
                     return self.answer(state)
                 self.send_response(response.status)
                 for header in ['Content-Type','Content-Length','Content-Disposition','X-Limo-Frame']:

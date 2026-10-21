@@ -40,13 +40,34 @@ class LifecycleTests(unittest.TestCase):
             finally:
                 for service in (upstream,server):service.shutdown();service.server_close()
 
+    def test_driving_responses_keep_computer_frame_count_and_instance(self):
+        class Upstream(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                body=json.dumps({'mode':'manual','recording':{'ready':True,'instance_id':'robot-old'}}).encode()
+                self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            def log_message(self,*args):pass
+        upstream=ThreadingHTTPServer(('127.0.0.1',0),Upstream)
+        with patch('companion.server.Coordinator') as factory:
+            factory.return_value.status.return_value={'active':True,'healthy':True,'frames':1234,'instance_id':'computer-current'}
+            gateway=Gateway('http://127.0.0.1:'+str(upstream.server_port),'unused')
+            server=ThreadingHTTPServer(('127.0.0.1',0),BaseHTTPRequestHandler);server.RequestHandlerClass=make_handler(gateway,server.server_port)
+            for service in (upstream,server):threading.Thread(target=service.serve_forever,daemon=True).start()
+            try:
+                with urlopen(Request('http://127.0.0.1:'+str(server.server_port)+'/drive',data=b'{}',headers={'X-Limo-Control':'1'})) as response:result=json.load(response)
+                self.assertEqual(result['recording']['frames'],1234)
+                self.assertEqual(result['recording']['instance_id'],'computer-current')
+                self.assertTrue(result['recording']['ready'])
+            finally:
+                for service in (upstream,server):service.shutdown();service.server_close()
+
     def test_recording_fault_keeps_session_active(self):
         with tempfile.TemporaryDirectory() as root:
             coordinator=Coordinator('unused',root,reserve_bytes=1)
             coordinator.active=True;coordinator.request=MagicMock()
             coordinator.fault('Network interrupted')
             self.assertTrue(coordinator.active)
-            coordinator.request.assert_called_once_with('/stop',{},timeout=2)
+            coordinator.request.assert_not_called()
             self.assertEqual(len(coordinator.incidents),1)
 
     def test_next_instance_never_requests_stop(self):

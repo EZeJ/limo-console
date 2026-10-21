@@ -37,11 +37,13 @@ class Coordinator:
     def request(self,path,data=None,timeout=8):return json_request(self.base,path,data,timeout)
 
     def start(self,profile=None):
-        self.request('/stop',{})
         try:configuration=self.request('/configuration')
         except Exception as exc:configuration={'unavailable':str(exc)}
         self.profile=dict(profile or DEFAULT_PROFILE)
-        camera=self.request('/capture/configure',self.profile,timeout=15)
+        camera=self.request('/capture/status')
+        if camera.get('config')!=self.profile:
+            if self.request('/status')['mode']!='stopped':raise ValueError('Stop driving before changing camera recording profile')
+            camera=self.request('/capture/configure',self.profile,timeout=15)
         self.last_seq=camera['sequence']
         self.capture_generation=camera.get('generation')
         if shutil.disk_usage(self.root).free<self.reserve:raise ValueError('Computer recording storage is full')
@@ -89,13 +91,10 @@ class Coordinator:
             incident={'reason':self.error,'detected_wall_ns':time.time_ns()}
             self.incidents.append(incident)
             if self.instances:self.instances[-1]['incidents'].append(incident)
-        try:self.request('/stop',{},timeout=2)
-        except Exception:pass
 
     def retry(self):
         """Acknowledge a fault without ending the user's session or re-arming."""
         if not self.active:raise ValueError('Start recording first')
-        self.request('/stop',{})
         self.request('/capture/status')
         if self.request('/recording/status').get('error'):
             raise ValueError('Robot recorder needs recovery; keep existing data and end this recording explicitly')
@@ -147,7 +146,7 @@ class Coordinator:
                     self.boot=meta['boot_id']
                     if self.last_seq>=0 and meta['sequence']!=self.last_seq+1:
                         self.gaps+=max(0,meta['sequence']-self.last_seq-1)
-                        self.fault('Camera frames were lost; driving is locked')
+                        self.fault('Camera frame gap detected')
                     self.last_seq=meta['sequence']
                     self.latest_frame=(data,kind,meta)
                     target=next((item for item in reversed(self.instances) if item['monotonic_ns']<=meta['monotonic_ns']),None)
@@ -216,8 +215,6 @@ class Coordinator:
         if not self.active:return
         if interrupted:self.fault('Recording companion shut down unexpectedly')
         self.active=False
-        try:self.request('/stop',{})
-        except Exception:pass
         finish_error=None
         try:self.request('/recording/finish',{'owner':self.owner,'interrupted':interrupted},timeout=25)
         except Exception as exc:finish_error=exc

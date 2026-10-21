@@ -50,7 +50,6 @@ class LimoHarness:
             raise ValueError('A finite motion duration up to 10 seconds is required')
         state=self.observe()
         if state.get('stationary_mode'):raise ValueError('Stationary maintenance mode; driving is locked')
-        if not state['recording']['ready']:raise ValueError('Start recording first')
         evidence=[]
         try:
             self.request('/arm',{'mode':'manual'})

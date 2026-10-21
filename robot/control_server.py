@@ -26,6 +26,7 @@ from std_msgs.msg import String
 from safety import Gate
 from navigation import Navigation
 from lidar_health import LidarHealth
+from recording_health import recording_problem
 from scan_quality import scan_metrics
 from mapping_control import MappingControl, export_map
 from speed_settings import load_limits, save_limits, RATED_MAX, ANGULAR_MAX
@@ -64,7 +65,7 @@ class Control(Node):
         self.create_subscription(LimoStatus, '/limo_status', self.on_status, 10)
         self.create_subscription(Odometry, '/odom', self.on_odom, 10)
         self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
-        self.create_subscription(Image, '/camera/image_raw', self.on_camera, QoSProfile(depth=1))
+        self.create_subscription(Image, '/camera/image_raw', self.on_camera, QoSProfile(depth=1),raw=True)
         self.create_subscription(Twist, '/cmd_vel', self.on_nav, 1)
         self.create_timer(0.05, self.tick)
 
@@ -92,17 +93,11 @@ class Control(Node):
         except (ValueError, TypeError): pass
 
     def recording_problem(self):
-        if time.monotonic()-self.last_recording > .75:
-            return 'Recording service is unavailable; driving is locked'
-        if not self.recording.get('ready'):
-            return self.recording.get('error') or 'Computer recording is not ready; driving is locked'
-        return ''
+        return recording_problem(self.recording,time.monotonic()-self.last_recording)
 
-    def require_recording(self):
+    def require_motion_allowed(self):
         if self.stationary_lock.exists():
             raise ValueError('Stationary maintenance mode; driving is locked')
-        reason = self.recording_problem()
-        if reason: raise ValueError(reason)
 
     def log_event(self, name, data):
         self.event_sequence += 1
@@ -151,7 +146,7 @@ class Control(Node):
             self.lidar.tick(now-self.last_scan)
             recording_problem = self.recording_problem()
             motion_problem = ('Stationary maintenance mode; driving is locked'
-                              if self.stationary_lock.exists() else recording_problem)
+                              if self.stationary_lock.exists() else '')
             if motion_problem and (self.gate.mode != 'stopped' or self.navigation.explorer.active):
                 self.navigation.stop(motion_problem)
                 self.gate.stop()
@@ -182,7 +177,7 @@ class Control(Node):
             if path not in ('/status', '/heartbeat'):
                 self.log_event('request', {'path':path, 'arguments':data})
             if path in ('/arm', '/drive', '/navigation/goal', '/navigation/explore', '/navigation/return'):
-                self.require_recording()
+                self.require_motion_allowed()
             if path in ('/navigation/prepare', '/navigation/goal', '/navigation/explore', '/navigation/return'):
                 self.lidar.require_scanning()
             if path == '/mapping/start':
@@ -208,8 +203,6 @@ class Control(Node):
                     raise ValueError('Chassis paused or not ready; check the robot pause button')
                 if self.status.get('control_mode') != 1:
                     raise ValueError('Chassis is not in command control mode')
-                if data.get('mode') == 'manual' and now-self.last_camera > 2:
-                    raise ValueError('Camera must be online for manual driving')
                 if data.get('mode') == 'navigation' and now-self.last_scan > 1:
                     raise ValueError('Lidar must be online for navigation')
                 if self.status.get('error_code'):
@@ -243,7 +236,7 @@ class Control(Node):
                 raise ValueError('Unknown endpoint')
             return dict(mode=self.gate.mode, reason=self.reason, chassis=self.status,
                         stationary_mode=self.stationary_lock.exists(),
-                        recording=dict(self.recording, ready=not bool(self.recording_problem())),
+                        recording=dict(self.recording, ready=bool(self.recording.get('active') and self.recording.get('ready') and now-self.last_recording<.75)),
                         manual_speed=dict(self.gate.manual_limits, rated_max=RATED_MAX, angular_max=ANGULAR_MAX),
                         odometry=self.odom, output=self.output,
                         front_clearance=self.clearance[0], rear_clearance=self.clearance[1],
@@ -369,7 +362,6 @@ def main():
                 if self.path in ('/lidar/pause','/lidar/resume'):
                     self.send_error(410,'Lidar control has been removed');return
                 if self.path.startswith('/recording/'):
-                    if self.path == '/recording/finish': node.request('/stop', {})
                     return self.proxy('http://127.0.0.1:8766'+self.path[len('/recording'):], json.dumps(data).encode())
                 if self.path == '/capture/configure':
                     node.request('/stop', {})

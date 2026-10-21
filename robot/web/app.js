@@ -93,7 +93,8 @@ function render(s) {
   connected = true;
   $("#demoBanner").hidden = !s.demo;
   renderLidarState(s);
-  if (window.renderRecording) window.renderRecording(s.recording, s.demo);
+  if (window.renderRecording && (s.demo || s.recording?.saved_directory || !window.localRecordingAvailable))
+    window.renderRecording(s.recording, s.demo);
   renderMapping(s);
   renderManualSpeed(s);
   if (navMission && (!s.navigation || s.navigation.mission_id !== navMission))
@@ -101,7 +102,6 @@ function render(s) {
   $("#dot").classList.add("live");
   $("#connection").textContent = t("Robot connected");
   if (s.mode !== "manual" && armed) stopped(s.reason);
-  const videoFresh = performance.now() - lastFrame < 1500;
   $("#arm").textContent = t(
     armed ? "Manual drive enabled" : "Enable manual drive",
   );
@@ -109,14 +109,11 @@ function render(s) {
     speedBusy ||
     mapBusy ||
     s.stationary_mode ||
-    (!s.demo && !s.recording?.ready) ||
     !!(s.navigation && s.navigation.preparing) ||
     exploreRequested ||
     !!navMission ||
     armed ||
     !s.chassis_online ||
-    !s.camera_online ||
-    !videoFresh ||
     s.chassis.error_code !== 0 ||
     s.chassis.vehicle_state !== 0 ||
     s.chassis.control_mode !== 1;
@@ -124,11 +121,9 @@ function render(s) {
     (b) =>
       (b.disabled =
         !armed ||
-        !videoFresh ||
         speedBusy ||
         mapBusy ||
-        s.stationary_mode ||
-        (!s.demo && !s.recording?.ready)),
+        s.stationary_mode),
   );
   $("#battery").textContent = Number(s.chassis.battery_voltage || 0).toFixed(1);
   $("#speed").textContent = Number(s.odometry.linear || 0).toFixed(2);
@@ -191,7 +186,7 @@ $("#desktop").onclick = () => {
   }).catch(() => {});
 };
 function press(dir) {
-  if (!armed || performance.now() - lastFrame > 1500) return;
+  if (!armed) return;
   holding.add(dir);
   buttons
     .filter((b) => b.dataset.dir === dir)
@@ -263,7 +258,6 @@ async function tick() {
   busy = true;
   const g = generation;
   try {
-    if ((armed || navMission) && performance.now() - lastFrame > 1500) stop();
     const x = holding.has("forward")
       ? (state?.manual_speed?.forward ?? 0.1)
       : holding.has("back")
@@ -309,8 +303,7 @@ camera.onload = () => {
 };
 camera.onerror = () => {
   $("#cameraOffline").hidden = false;
-  $("#cameraOffline").textContent = t("Camera unavailable. Driving stopped.");
-  if (armed || navMission) stop();
+  $("#cameraOffline").textContent = t("Camera unavailable. Preview only is affected.");
   setTimeout(loadFrame, 500);
 };
 function loadFrame() {
@@ -559,8 +552,7 @@ function renderNav(n) {
     armed ||
     exploreRequested ||
     !hardwareReady ||
-    !state.lidar_online ||
-    !state.camera_online;
+    !state.lidar_online;
   $("#exploreNav").textContent =
     n.exploration && n.exploration.active
       ? t("Exploration running…")
@@ -611,7 +603,7 @@ function renderNav(n) {
       : t("Waiting for map and localization");
   if (performance.now() > navErrorUntil) {
     $("#navStatus").textContent = !hardwareReady
-      ? t("Chassis not ready. Check the pause button, camera, and connection.")
+      ? t("Chassis not ready. Check the pause button and connection.")
       : t(n.message);
     $("#navStatus").classList.remove("error");
   }
@@ -700,10 +692,6 @@ $("#prepareNav").onclick = async () => {
 };
 $("#exploreNav").onclick = async () => {
   if (navBusy || exploreRequested) return;
-  if (performance.now() - lastFrame > 1500) {
-    navFailure(Error(t("Wait for a fresh camera frame.")));
-    return;
-  }
   if (navView && navView.ready) {
     startMission("/navigation/explore", {});
     return;
@@ -729,7 +717,7 @@ $("#navStop").onclick = stop;
 $("#navMap").onclick = (e) => {
   if (!$("#enableMapGoals").checked) return;
   if (!state?.lidar_online) {
-    navFailure(Error(t("Resume lidar scanning before using navigation.")));
+    navFailure(Error(t("Fresh lidar scans are required")));
     return;
   }
   if (!navView || !navView.ready || !mapLayout) {
@@ -740,10 +728,6 @@ $("#navMap").onclick = (e) => {
   }
   if (armed || navMission || activePhases.includes(navView.phase)) {
     navFailure(Error(t("Stop the current task before choosing another goal.")));
-    return;
-  }
-  if (performance.now() - lastFrame > 1500) {
-    navFailure(Error(t("Camera frames are stale. Navigation cannot start.")));
     return;
   }
   const canvas = $("#navMap"),
@@ -788,15 +772,9 @@ function renderLidarState(s) {
   );
   $("#driveReadiness").textContent = s.stationary_mode
     ? t("Stationary maintenance mode; driving is locked")
-    : !s.chassis_online
-    ? t("Chassis offline. Check the connection.")
-    : !s.camera_online
-      ? t("Wait for the camera to reconnect.")
-      : !s.demo && !s.recording?.ready
-        ? t("Computer recording is not ready; driving is locked")
-        : s.chassis.vehicle_state !== 0
-          ? t("Chassis paused. Release the robot's physical pause button.")
-          : t("Camera and chassis ready. You can enable driving.");
+    : !s.chassis_online ? t("Chassis offline. Check the connection.")
+    : s.chassis.vehicle_state !== 0 ? t("Chassis paused. Release the robot's physical pause button.")
+    : t("Chassis ready. Camera and recording are optional.");
 }
 
 function renderManualSpeed(s) {

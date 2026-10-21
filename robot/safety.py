@@ -48,7 +48,7 @@ class Gate:
         if now - self.lease > 0.6:
             self.stop()
             return (0.0, 0.0), 'Connection timeout; re-arm required'
-        if status_age > 1.0 or (self.mode == 'navigation' and scan_age > 1.0) or (self.mode == 'manual' and camera_age > 2.0):
+        if status_age > 1.0 or (self.mode == 'navigation' and scan_age > 1.0):
             self.stop()
             return (0.0, 0.0), 'Sensor timeout; re-arm required'
         if error:
@@ -61,9 +61,9 @@ class Gate:
             return (0.0, 0.0), 'Waiting for command'
         x, z = self.command
         if self.mode == 'manual':
-            # Operator judges obstacles from the camera; the camera does not see behind.
+            # Manual driving is operator-controlled; camera preview is optional.
             return (max(-self.manual_limits['reverse'], min(self.manual_limits['forward'], x)),
-                    max(-self.manual_limits['angular'], min(self.manual_limits['angular'], z))), 'Camera-guided manual control'
+                    max(-self.manual_limits['angular'], min(self.manual_limits['angular'], z))), 'Manual control'
         if x > 0 and front == 0:
             return (0.0, 0.0), 'No usable front lidar returns'
         if x < 0 and rear == 0:

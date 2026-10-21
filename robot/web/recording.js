@@ -8,6 +8,7 @@ const readableBytes = (value) =>
     ? (value / 1024 ** 3).toFixed(2) + " GB"
     : (value / 1024 ** 2).toFixed(1) + " MB";
 window.renderRecording = (r, demo = false) => {
+  if (r?.saved_directory) window.localRecordingAvailable = true;
   recordingView = r || {};
   $("#recordingState").textContent = t(
     demo
@@ -19,10 +20,10 @@ window.renderRecording = (r, demo = false) => {
         : r?.initializing
           ? "Preparing recording…"
           : r?.error
-            ? "Recording error · driving locked"
+            ? "Recording error"
             : r?.active ? "Preparing recording…" : "Not recording",
   );
-  $("#recordingState").classList.toggle("error", !demo && !r?.ready);
+  $("#recordingState").classList.toggle("error", !demo && !!r?.error);
   $("#instanceLabel").textContent = r?.instance_id || "—";
   $("#recordingMetrics").textContent = r
     ? t("{0} frames · {1} archived", [
@@ -79,11 +80,9 @@ $("#startRecording").onclick = () => api("/local/recording/start", {}).catch(rec
 $("#openRecordingFolder").onclick = () =>
   api("/local/recording/open-folder", {}).catch(recordingFailure);
 $("#retryRecording").onclick = () => {
-  stop();
   api("/local/recording/retry", {}).catch(recordingFailure);
 };
 $("#finishRecording").onclick = () => {
-  stop();
   api("/local/recording/finish", {}).catch(recordingFailure);
 };
 $("#applyRecordingProfile").onclick = async () => {
@@ -146,3 +145,12 @@ window.addEventListener("languagechange", () => {
   if (recordingView) window.renderRecording(recordingView, !!state?.demo);
   refreshInstances();
 });
+// Driving responses must never replace the richer computer recording state.
+async function refreshRecordingState() {
+  try {
+    const r = await api('/local/recording/status');
+    window.renderRecording(r);
+  } catch (_) { /* The regular connection status handles unavailable companions. */ }
+}
+refreshRecordingState();
+setInterval(refreshRecordingState, 500);

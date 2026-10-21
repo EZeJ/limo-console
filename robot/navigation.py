@@ -159,7 +159,7 @@ class Navigation:
                     for n in self.lifecycle_clients))
 
     def check_ready(self):
-        self.node.require_recording()
+        self.node.require_motion_allowed()
         if self.preparing:
             raise ValueError("Wait for mapping setup to finish")
         if self.phase in self.ACTIVE or self.node.gate.mode != 'stopped':
@@ -170,8 +170,8 @@ class Navigation:
             raise ValueError('Scan coverage or timestamps are unsuitable for navigation')
         now = time.monotonic()
         status = self.node.status
-        if now-self.node.last_status > 1 or now-self.node.last_scan > 1 or now-self.node.last_camera > 2:
-            raise ValueError('Fresh chassis, lidar and camera data are required')
+        if now-self.node.last_status > 1 or now-self.node.last_scan > 1:
+            raise ValueError('Fresh chassis and lidar data are required')
         if status.get('vehicle_state') != 0 or status.get('control_mode') != 1 or status.get('error_code'):
             raise ValueError('Chassis paused or not ready; check the robot')
         if status.get('motion_mode') != 0:
@@ -344,8 +344,6 @@ class Navigation:
             self.stop('Browser connection lost; navigation stopped.')
         elif self.phase not in ('starting', 'exploring') and self.node.gate.mode != 'navigation':
             self.stop('Motion guard stopped navigation: '+self.node.reason)
-        elif time.monotonic()-self.node.last_camera > 2:
-            self.stop('Camera unavailable; navigation stopped.')
         elif not self.ready() or time.monotonic()-self.node.last_scan > 1 or time.monotonic()-self.node.last_status > 1:
             self.stop('Map, navigation or sensor data unavailable; stopped.')
         elif self.node.status.get('vehicle_state') != 0 or self.node.status.get('control_mode') != 1 or self.node.status.get('error_code'):
