@@ -1,0 +1,2 @@
+# ROS packages come from the robot's ROS installation, not pip.
+Pillow>=9.0,<13

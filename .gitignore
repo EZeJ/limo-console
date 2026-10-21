@@ -1,0 +1,32 @@
+# Runtime state and robot-generated data
+robot/maps/
+robot/logs/
+robot/*-state.json
+robot/manual-speed.json
+robot/mapping-engine
+robot/*.tmp
+robot/*.new
+robot/.backup*/
+robot/.deploy*/
+# Local credentials / connection settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.sock
+# Development artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
+# Never add personal workspace artifacts
+reports/
+snapshots/
+*.bag
+*.db3
+*.mcap

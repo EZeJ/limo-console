@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f6f8" />
+    <meta
+      name="description"
+      content="Limo Console — a local control workspace for your LIMO robot."
+    />
+    <title>Limo Console</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%230d8878'/%3E%3Cpath d='M12 11v18h17M20 11v10h9' fill='none' stroke='white' stroke-width='3.5'/%3E%3C/svg%3E"
+    />
+    <script src="/messages.js" defer></script>
+    <script src="/i18n.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a href="#live" class="skip-link" data-i18n="Skip to controls"
+      >Skip to controls</a
+    >
+    <aside
+      class="sidebar"
+      aria-label="Workspace navigation"
+      data-i18n-aria="Workspace navigation"
+    >
+      <a class="brand" href="#live" aria-label="Limo Console"
+        ><span class="logo" aria-hidden="true"
+          ><svg viewBox="0 0 32 32">
+            <path d="M8 7v18h18M16 7v10h10" /></svg></span
+        ><span>Limo<span class="brand-sub">Console</span></span></a
+      >
+      <div class="sidebar-section" data-i18n="WORKSPACE">WORKSPACE</div>
+      <nav>
+        <a href="#live" class="nav-link active"
+          ><span class="nav-icon" aria-hidden="true">⌘</span
+          ><span data-i18n="Drive">Drive</span
+          ><span class="nav-index">01</span></a
+        ><a href="#mapping" class="nav-link"
+          ><span class="nav-icon" aria-hidden="true">▧</span
+          ><span data-i18n="Mapping">Mapping</span
+          ><span class="nav-index">02</span></a
+        ><a href="#devices" class="nav-link"
+          ><span class="nav-icon" aria-hidden="true">◎</span
+          ><span data-i18n="Devices">Devices</span
+          ><span class="nav-index">03</span></a
+        >
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="robot-avatar" aria-hidden="true">
+          <svg viewBox="0 0 76 60">
+            <rect x="14" y="28" width="48" height="24" rx="8" />
+            <rect x="9" y="34" width="8" height="20" rx="3" />
+            <rect x="59" y="34" width="8" height="20" rx="3" />
+            <path d="M23 28V18h30v10M38 18v-7" />
+            <circle cx="38" cy="8" r="4" />
+            <circle cx="29" cy="39" r="3" />
+            <circle cx="47" cy="39" r="3" />
+          </svg>
+        </div>
+        <strong>LIMO</strong
+        ><span data-i18n="Your local robot workspace"
+          >Your local robot workspace</span
+        >
+        <div class="local-label">
+          <span class="dot live"></span
+          ><span data-i18n="LOCAL CONNECTION">LOCAL CONNECTION</span>
+        </div>
+      </div>
+    </aside>
+    <div class="shell">
+      <header class="topbar">
+        <div class="breadcrumb">
+          <span data-i18n="Workspace">Workspace</span><span>/</span
+          ><strong data-i18n="Robot control">Robot control</strong>
+        </div>
+        <div class="header-actions">
+          <div class="connection">
+            <span id="dot" class="dot"></span
+            ><span id="connection" data-i18n="Connecting">Connecting</span>
+          </div>
+          <div
+            class="language-switch"
+            role="group"
+            aria-label="Language"
+            data-i18n-aria="Language"
+          >
+            <button type="button" data-language="en" lang="en">EN</button
+            ><button type="button" data-language="zh" lang="zh-CN">中文</button>
+          </div>
+          <button
+            id="quickStop"
+            class="quick-stop"
+            data-i18n-aria="Stop robot"
+            aria-label="Stop robot"
+          >
+            <span aria-hidden="true">■</span> <span data-i18n="Stop">Stop</span
+            ><kbd data-i18n="Space">Space</kbd>
+          </button>
+        </div>
+      </header>
+      <main>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow" data-i18n="THE WORLD, FROM YOUR ROBOT">
+              THE WORLD, FROM YOUR ROBOT
+            </div>
+            <h1 data-i18n="Take the controls.">Take the controls.</h1>
+            <p data-i18n="See clearly. Move precisely. Explore your space.">
+              See clearly. Move precisely. Explore your space.
+            </p>
+          </div>
+          <span class="pill" id="mode" data-i18n="Stopped">Stopped</span>
+        </div>
+        <div
+          id="demoBanner"
+          class="demo-banner"
+          hidden
+          data-i18n="Preview mode · Synthetic data · No robot is connected"
+        >
+          Preview mode · Synthetic data · No robot is connected
+        </div>
+        <div class="workspace-grid" id="live">
+          <div class="observation-column">
+            <section class="panel camera-panel">
+              <div class="panel-title">
+                <div>
+                  <span class="section-number">01 /</span>
+                  <h2 data-i18n="Live camera">Live camera</h2>
+                </div>
+                <span class="live-label"
+                  ><i></i><span data-i18n="FRONT VIEW">FRONT VIEW</span></span
+                >
+              </div>
+              <div class="feed">
+                <img
+                  id="camera"
+                  alt="Robot front camera"
+                  data-i18n-alt="Robot front camera"
+                />
+                <div class="camera-corners" aria-hidden="true"></div>
+                <div class="feed-top">
+                  <span class="feed-chip"
+                    ><i></i><span data-i18n="LIVE">LIVE</span></span
+                  ><span class="feed-chip secondary">RGB · 640 × 480</span>
+                </div>
+                <div class="feed-bottom">
+                  <span data-i18n="Front camera">Front camera</span
+                  ><span data-i18n="Auto exposure">Auto exposure</span>
+                </div>
+                <div id="cameraOffline" class="feed-overlay">
+                  <span class="camera-placeholder" aria-hidden="true">▣</span
+                  ><span data-i18n="Connecting to camera…"
+                    >Connecting to camera…</span
+                  >
+                </div>
+              </div>
+              <div
+                class="status"
+                id="status"
+                role="status"
+                aria-live="polite"
+                data-i18n="Connecting to robot…"
+              >
+                Connecting to robot…
+              </div>
+            </section>
+            <div class="sensor-grid">
+              <section class="panel radar-panel">
+                <div class="panel-title">
+                  <div>
+                    <span class="section-number">02 /</span>
+                    <h2 data-i18n="Surroundings">Surroundings</h2>
+                  </div>
+                  <span class="subtle-tag">LiDAR</span>
+                </div>
+                <div class="radar">
+                  <canvas
+                    id="lidar"
+                    width="600"
+                    height="600"
+                    aria-label="Lidar top view; the robot faces up"
+                    data-i18n-aria="Lidar top view; the robot faces up"
+                  ></canvas
+                  ><span
+                    class="radar-info"
+                    id="lidarInfo"
+                    data-i18n="Reading scan…"
+                    >Reading scan…</span
+                  >
+                </div>
+              </section>
+              <section class="panel telemetry-panel">
+                <div class="panel-title">
+                  <div>
+                    <span class="section-number">03 /</span>
+                    <h2 data-i18n="Telemetry">Telemetry</h2>
+                  </div>
+                  <span class="telemetry-pulse" aria-hidden="true">⌁</span>
+                </div>
+                <div class="telemetry">
+                  <div class="metric">
+                    <span class="metric-icon" aria-hidden="true">▰</span>
+                    <div>
+                      <div class="label" data-i18n="Battery voltage">
+                        Battery voltage
+                      </div>
+                      <span class="value" id="battery">—</span><small>V</small>
+                    </div>
+                    <div class="sparkline" aria-hidden="true">
+                      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                    </div>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-icon" aria-hidden="true">↗</span>
+                    <div>
+                      <div class="label" data-i18n="Linear speed">
+                        Linear speed
+                      </div>
+                      <span class="value" id="speed">0.00</span
+                      ><small>m/s</small>
+                    </div>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-icon" aria-hidden="true">↻</span>
+                    <div>
+                      <div class="label" data-i18n="Angular speed">
+                        Angular speed
+                      </div>
+                      <span class="value" id="turn">0.00</span
+                      ><small>rad/s</small>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+          <section class="panel controls">
+            <div class="panel-title">
+              <div><h2 data-i18n="Manual drive">Manual drive</h2></div>
+              <span class="subtle-tag" data-i18n="HOLD TO MOVE"
+                >HOLD TO MOVE</span
+              >
+            </div>
+            <div class="control-body">
+              <div
+                class="hint"
+                data-i18n="Hold a direction to move. Release to stop."
+              >
+                Hold a direction to move. Release to stop.
+              </div>
+              <div class="dpad">
+                <span></span
+                ><button
+                  class="drive"
+                  data-dir="forward"
+                  aria-label="Hold to move forward"
+                  data-i18n-aria="Hold to move forward"
+                  disabled
+                >
+                  <span>↑</span><small>W</small></button
+                ><span></span
+                ><button
+                  class="drive"
+                  data-dir="left"
+                  aria-label="Hold to turn left"
+                  data-i18n-aria="Hold to turn left"
+                  disabled
+                >
+                  <span>←</span><small>A</small>
+                </button>
+                <div class="dpad-center" aria-hidden="true">
+                  <svg viewBox="0 0 40 40">
+                    <rect x="13" y="10" width="14" height="22" rx="5" />
+                    <path d="m15 7 5-4 5 4M10 14v6m0 4v6m20-16v6m0 4v6" />
+                  </svg>
+                </div>
+                <button
+                  class="drive"
+                  data-dir="right"
+                  aria-label="Hold to turn right"
+                  data-i18n-aria="Hold to turn right"
+                  disabled
+                >
+                  <span>→</span><small>D</small></button
+                ><span></span
+                ><button
+                  class="drive"
+                  data-dir="back"
+                  aria-label="Hold to reverse"
+                  data-i18n-aria="Hold to reverse"
+                  disabled
+                >
+                  <span>↓</span><small>S</small></button
+                ><span></span>
+              </div>
+              <div class="keyboard-hint">
+                <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd
+                ><span data-i18n="or arrow keys">or arrow keys</span>
+              </div>
+              <button
+                id="arm"
+                class="primary arm"
+                disabled
+                data-i18n="Enable manual drive"
+              >
+                Enable manual drive
+              </button>
+              <div
+                class="drive-readiness"
+                id="driveReadiness"
+                data-i18n="Checking camera and chassis…"
+              >
+                Checking camera and chassis…
+              </div>
+              <form id="manualSpeedForm" class="speed-settings">
+                <div class="speed-heading">
+                  <h3 data-i18n="Speed limits">Speed limits</h3>
+                  <span data-i18n="YOUR PACE">YOUR PACE</span>
+                </div>
+                <div class="speed-label">
+                  <label for="forwardSpeed" data-i18n="Forward">Forward</label
+                  ><span>m/s</span>
+                </div>
+                <div class="speed-row">
+                  <input
+                    id="forwardSpeedRange"
+                    aria-label="Forward speed slider"
+                    data-i18n-aria="Forward speed slider"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.10"
+                  /><input
+                    id="forwardSpeed"
+                    aria-label="Maximum forward speed in meters per second"
+                    data-i18n-aria="Maximum forward speed in meters per second"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.10"
+                    required
+                  />
+                </div>
+                <div class="speed-label">
+                  <label for="reverseSpeed" data-i18n="Reverse">Reverse</label
+                  ><span>m/s</span>
+                </div>
+                <div class="speed-row">
+                  <input
+                    id="reverseSpeedRange"
+                    aria-label="Reverse speed slider"
+                    data-i18n-aria="Reverse speed slider"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.05"
+                  /><input
+                    id="reverseSpeed"
+                    aria-label="Maximum reverse speed in meters per second"
+                    data-i18n-aria="Maximum reverse speed in meters per second"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.05"
+                    required
+                  />
+                </div>
+                <div class="speed-label">
+                  <label for="angularSpeed" data-i18n="Turning">Turning</label
+                  ><span>rad/s</span>
+                </div>
+                <div class="speed-row">
+                  <input
+                    id="angularSpeedRange"
+                    aria-label="Turning speed slider"
+                    data-i18n-aria="Turning speed slider"
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.01"
+                    value="0.30"
+                  /><input
+                    id="angularSpeed"
+                    aria-label="Maximum turning speed in radians per second"
+                    data-i18n-aria="Maximum turning speed in radians per second"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.01"
+                    value="0.30"
+                    required
+                  />
+                </div>
+                <p
+                  class="setting-note"
+                  data-i18n="Linear: 0–1 m/s · Turning: 0–2 rad/s. Saving stops the robot."
+                >
+                  Linear: 0–1 m/s · Turning: 0–2 rad/s. Saving stops the robot.
+                </p>
+                <button
+                  id="saveManualSpeed"
+                  type="submit"
+                  class="secondary"
+                  data-i18n="Apply speed limits"
+                >
+                  Apply speed limits
+                </button>
+                <div id="speedApplied" class="nav-detail"></div>
+                <div id="speedFeedback" class="nav-detail" role="status"></div>
+              </form>
+              <button id="stop" class="stop">
+                <span class="stop-icon" aria-hidden="true">■</span
+                ><span data-i18n="Stop & disarm">Stop & disarm</span
+                ><kbd data-i18n="Space">Space</kbd>
+              </button>
+              <p
+                class="notice"
+                data-i18n="You control obstacle clearance. Manual drive does not avoid obstacles automatically."
+              >
+                You control obstacle clearance. Manual drive does not avoid
+                obstacles automatically.
+              </p>
+              <span id="driveSpeedHint" class="sr-only"></span>
+            </div>
+          </section>
+        </div>
+        <section
+          class="panel device-bar"
+          id="devices"
+          aria-labelledby="lidarHeading"
+        >
+          <div class="device-symbol" aria-hidden="true">◎</div>
+          <div class="device-copy">
+            <div class="device-heading">
+              <h2 id="lidarHeading" data-i18n="Lidar scanning">
+                Lidar scanning
+              </h2>
+              <span id="lidarState" class="device-tag" data-i18n="Connecting"
+                >Connecting</span
+              >
+            </div>
+            <p id="lidarDetail" data-i18n="Waiting for lidar…">
+              Waiting for lidar…
+            </p>
+            <p
+              class="device-note"
+              data-i18n="Pausing stops scan data, not the motor. Mapping and navigation need an active scan."
+            >
+              Pausing stops scan data, not the motor. Mapping and navigation
+              need an active scan.
+            </p>
+          </div>
+          <div class="device-actions">
+            <button
+              id="pauseLidar"
+              class="secondary"
+              disabled
+              data-i18n="Pause scan data"
+            >
+              Pause scan data</button
+            ><button
+              id="resumeLidar"
+              class="primary"
+              hidden
+              disabled
+              data-i18n="Resume scan data"
+            >
+              Resume scan data</button
+            ><span id="lidarFeedback" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+        <section
+          class="mapping-section"
+          id="mapping"
+          aria-labelledby="mappingHeading"
+        >
+          <div class="section-heading">
+            <div>
+              <div class="eyebrow" data-i18n="MAKE ROOM FOR EXPLORATION">
+                MAKE ROOM FOR EXPLORATION
+              </div>
+              <h2 id="mappingHeading" data-i18n="Build a map of your world.">
+                Build a map of your world.
+              </h2>
+            </div>
+            <span id="mappingPhase" class="device-tag" data-i18n="Not mapping"
+              >Not mapping</span
+            >
+          </div>
+          <div class="panel navigation-layout">
+            <div class="map-area">
+              <div class="map-toolbar">
+                <span class="map-dot"></span
+                ><span data-i18n="Occupancy map">Occupancy map</span
+                ><span class="map-toolbar-right" data-i18n="LIVE SLAM"
+                  >LIVE SLAM</span
+                >
+              </div>
+              <div class="map-wrap">
+                <canvas
+                  id="navMap"
+                  width="1000"
+                  height="600"
+                  tabindex="0"
+                  aria-label="Live map; clicking is disabled until navigation goals are enabled"
+                  data-i18n-aria="Live map; clicking is disabled until navigation goals are enabled"
+                ></canvas>
+                <div id="mapEmpty" class="map-empty">
+                  <span aria-hidden="true">▧</span
+                  ><strong data-i18n="Your next discovery starts here."
+                    >Your next discovery starts here.</strong
+                  >
+                  <p
+                    data-i18n="Start mapping, then drive to reveal your surroundings."
+                  >
+                    Start mapping, then drive to reveal your surroundings.
+                  </p>
+                </div>
+              </div>
+              <div class="map-legend">
+                <span
+                  ><i class="legend-free"></i
+                  ><span data-i18n="Free space">Free space</span></span
+                ><span
+                  ><i class="legend-wall"></i
+                  ><span data-i18n="Obstacle">Obstacle</span></span
+                ><span
+                  ><i class="legend-unknown"></i
+                  ><span data-i18n="Unknown">Unknown</span></span
+                ><span
+                  ><i class="legend-robot"></i
+                  ><span data-i18n="Robot">Robot</span></span
+                >
+              </div>
+              <div class="map-dimensions" id="mappingDimensions"></div>
+              <div class="map-progress" id="mappingStatus" role="status"></div>
+            </div>
+            <div class="mapping-controls">
+              <h3 data-i18n="Mapping session">Mapping session</h3>
+              <p
+                class="setting-note"
+                data-i18n="Capture your surroundings while you drive."
+              >
+                Capture your surroundings while you drive.
+              </p>
+              <label for="mappingEngine" data-i18n="SLAM engine"
+                >SLAM engine</label
+              ><select id="mappingEngine">
+                <option value="cartographer">Cartographer</option>
+                <option value="slam_toolbox">SLAM Toolbox</option>
+              </select>
+              <div id="mappingEngineStatus" class="nav-detail"></div>
+              <button
+                id="startMapping"
+                class="primary"
+                data-i18n="Start mapping"
+              >
+                Start mapping</button
+              ><label for="mapName" data-i18n="Map name (optional)"
+                >Map name (optional)</label
+              ><input
+                id="mapName"
+                type="text"
+                maxlength="64"
+                placeholder="e.g. room_01"
+                data-i18n-placeholder="e.g. room_01"
+                autocomplete="off"
+              />
+              <div class="map-action-row">
+                <button
+                  id="saveMapping"
+                  class="secondary"
+                  disabled
+                  data-i18n="Save map"
+                >
+                  Save map</button
+                ><button
+                  id="stopMapping"
+                  class="secondary"
+                  disabled
+                  data-i18n="Save & finish"
+                >
+                  Save & finish
+                </button>
+              </div>
+              <p
+                class="setting-note"
+                data-i18n="Saving pauses movement. Existing maps are never overwritten."
+              >
+                Saving pauses movement. Existing maps are never overwritten.
+              </p>
+              <div
+                id="mapSaveResult"
+                class="map-save-result"
+                role="status"
+              ></div>
+              <div class="saved-maps">
+                <label for="savedMaps" data-i18n="Saved maps">Saved maps</label
+                ><select
+                  id="savedMaps"
+                  aria-label="Saved maps"
+                  data-i18n-aria="Saved maps"
+                >
+                  <option value="" data-i18n="Loading…">
+                    Loading…
+                  </option></select
+                ><a id="downloadMap" class="download-map" hidden
+                  ><span data-i18n="Download map ZIP">Download map ZIP</span
+                  ><span aria-hidden="true">↓</span></a
+                >
+              </div>
+              <details id="navigation" class="advanced-navigation">
+                <summary>
+                  <span data-i18n="Autonomous navigation"
+                    >Autonomous navigation</span
+                  ><span>+</span>
+                </summary>
+                <div class="nav-controls">
+                  <span id="navPhase" class="nav-detail"></span
+                  ><button
+                    id="applyMapping"
+                    hidden
+                    data-i18n="Apply selected engine"
+                  >
+                    Apply selected engine</button
+                  ><button
+                    id="prepareNav"
+                    class="secondary"
+                    data-i18n="Enable navigation"
+                  >
+                    Enable navigation</button
+                  ><label class="goal-opt-in"
+                    ><input type="checkbox" id="enableMapGoals" /><span
+                      data-i18n="Allow map clicks to send driving goals"
+                      >Allow map clicks to send driving goals</span
+                    ></label
+                  ><button
+                    id="exploreNav"
+                    class="secondary"
+                    disabled
+                    data-i18n="Explore automatically"
+                  >
+                    Explore automatically
+                  </button>
+                  <p
+                    class="setting-note"
+                    data-i18n="Robot will move. Each exploration run is limited to 2 minutes or 6 meters."
+                  >
+                    Robot will move. Each exploration run is limited to 2
+                    minutes or 6 meters.
+                  </p>
+                  <div id="exploreInfo" class="nav-detail"></div>
+                  <div class="nav-status" id="navStatus" role="status"></div>
+                  <label for="returnMode" data-i18n="Return mode"
+                    >Return mode</label
+                  ><select id="returnMode">
+                    <option value="auto" data-i18n="Auto · reverse when clear">
+                      Auto · reverse when clear
+                    </option>
+                    <option value="forward" data-i18n="Turn and drive forward">
+                      Turn and drive forward
+                    </option>
+                    <option value="reverse" data-i18n="Reverse only">
+                      Reverse only
+                    </option></select
+                  ><button
+                    id="returnHome"
+                    class="secondary"
+                    disabled
+                    data-i18n="Return along route"
+                  >
+                    Return along route</button
+                  ><button
+                    id="navStop"
+                    class="danger-outline"
+                    data-i18n="Stop navigation"
+                  >
+                    Stop navigation
+                  </button>
+                  <div class="nav-detail" id="returnInfo"></div>
+                  <div class="nav-detail" id="targetInfo"></div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </section>
+        <footer>
+          <span class="footer-brand">Limo Console <span>v1.0</span></span
+          ><span id="sensors" data-i18n="Checking devices…"
+            >Checking devices…</span
+          ><a
+            id="desktop"
+            href="http://127.0.0.1:16080/vnc.html?autoconnect=true&amp;resize=scale"
+            target="_blank"
+            rel="noopener"
+            data-i18n="Advanced desktop ↗"
+            >Advanced desktop ↗</a
+          >
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
