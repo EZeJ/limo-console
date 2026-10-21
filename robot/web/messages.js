@@ -1,5 +1,9 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Known free area {0} m² · Localization {1} · Route accuracy needs a driving test": "已知空地 {0} m² · 定位{1} · 路线精度需通过行驶测试验证",
+  "No footprint-safe reachable frontier. Stopped; continue manual mapping to reveal a route.": "没有满足车身净空要求的可达探索边界。已停车；请先手动补充地图，找到可通行路线。",
+  "Map did not change after reaching the target. Stopped; inspect scan and localization health.": "到达目标后地图没有变化。已停车；请检查雷达与定位状态。",
+  "Scan coverage or timestamps are unsuitable for navigation": "雷达覆盖范围或时间戳暂不满足导航要求",
   "Start recording": "开始录制",
   "End recording": "结束录制",
   "Recording": "正在录制",

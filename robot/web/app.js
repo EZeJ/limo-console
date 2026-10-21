@@ -898,6 +898,11 @@ function renderMapping(s) {
       : t(m.message) ||
         t("Start mapping, then drive manually to expand the map.");
   $("#mappingStatus").classList.toggle("error", !!m.error);
+  $("#mapHealth").textContent = m.active
+    ? t("Known free area {0} m² · Localization {1} · Route accuracy needs a driving test", [
+        Number(m.statistics?.free_area_m2 || 0).toFixed(2),
+        t(m.localization_available ? "online" : "offline"),
+      ]) : "";
   $("#startMapping").disabled =
     working || m.active || m.waiting || !s.lidar_online || !s.chassis_online;
   $("#saveMapping").disabled = working || !m.active;

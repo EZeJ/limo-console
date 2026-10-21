@@ -61,10 +61,16 @@ class MappingControl:
         elif active and not self.busy and not error:
             message = 'Map updating live. Drive manually to expand coverage.'
         grid = self.navigation.grid
+        localized=False
+        try:self.navigation.transform();localized=True
+        except (ValueError,AttributeError):pass
         return dict(active=active, busy=self.busy, waiting=waiting,
                     operation=self.operation, message=message, error=error,
                     last_saved=self.last_saved,
                     revision=self.navigation.revision,
+                    localization_available=localized,
+                    statistics=getattr(self.navigation,'map_statistics',{}),
+                    route_accuracy_verified=False,
                     map=dict(width=grid['width'], height=grid['height'], resolution=grid['resolution']) if grid else None)
 
     def list_maps(self):

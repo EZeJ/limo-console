@@ -6,8 +6,6 @@ from speed_settings import validate_limits
 class Gate:
     def __init__(self, forward=.10, reverse=.05, angular=.30):
         self.mode = 'stopped'
-        self.precision_forward = False
-        self.precision_clear = False
         self.lease = float('-inf')
         self.command_time = float('-inf')
         self.command = (0.0, 0.0)
@@ -20,8 +18,6 @@ class Gate:
 
     def stop(self):
         self.mode = 'stopped'
-        self.precision_forward = False
-        self.precision_clear = False
         self.command = (0.0, 0.0)
         self.command_time = float('-inf')
 
@@ -68,10 +64,6 @@ class Gate:
             # Operator judges obstacles from the camera; the camera does not see behind.
             return (max(-self.manual_limits['reverse'], min(self.manual_limits['forward'], x)),
                     max(-self.manual_limits['angular'], min(self.manual_limits['angular'], z))), 'Camera-guided manual control'
-        if self.precision_forward:
-            if camera_age > 2 or not self.precision_clear or x < 0 or z != 0:
-                return (0., 0.), 'Straight-step clearance unavailable'
-            return (min(.035, max(0., x)), 0.), 'Narrow-space straight step'
         if x > 0 and front == 0:
             return (0.0, 0.0), 'No usable front lidar returns'
         if x < 0 and rear == 0:

@@ -6,7 +6,6 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from narrow_space import forward_step_clear
 from PIL import Image
 from nav2_msgs.action import NavigateToPose, ComputePathToPose
 from action_msgs.msg import GoalStatus
@@ -45,6 +44,7 @@ class Explorer:
         self.scan_attempted = False
         self.stepping = False
         self.step_count = 0
+        self.wait_revision = None
 
     def start(self):
         n = self.nav
@@ -55,6 +55,7 @@ class Explorer:
         self.scanning = self.scan_attempted = False
         self.stepping = False
         self.step_count = 0
+        self.wait_revision = None
         self.started = time.monotonic()
         self.reached = 0
         self.visited = []
@@ -79,20 +80,6 @@ class Explorer:
         n.last_heartbeat = self.started
         n.phase = 'exploring'
         n.message = 'Exploration: looking for reachable frontiers…'
-
-    def try_straight_step(self):
-        n = self.nav
-        if self.step_count >= 6 or not forward_step_clear(getattr(n.node, 'lidar_points', [])):
-            return False
-        self.step_count += 1
-        self.stepping = True
-        self.step_origin = n.odom_pose()
-        self.step_deadline = time.monotonic()+3
-        n.node.gate.arm('navigation', n.last_heartbeat)
-        n.node.gate.precision_forward = True
-        n.node.gate.precision_clear = True
-        n.message = 'Narrow-space mapping: moving slowly along the lidar-confirmed corridor, then stopping within about 3 cm to replan.'
-        return True
 
     def finish_leg(self, status):
         n = self.nav
@@ -123,6 +110,8 @@ class Explorer:
             n.message = 'Exploration path is no longer valid. Stopped; updating the map and selecting another target.'
             self.next_at = time.monotonic()+2.5
             return
+        self.wait_revision = n.content_revision
+        self.map_deadline = time.monotonic()+8
         self.consecutive_failures = 0
         self.reached += 1
         self.visited.append(n.odom_pose())  # odom survives SLAM map corrections
@@ -135,52 +124,6 @@ class Explorer:
         now = time.monotonic()
         if now-self.started >= self.max_seconds or n.trail.length >= self.max_distance or self.reached >= 12:
             n.stop('Exploration time or distance limit reached. Map retained; start another run to continue.', 'complete')
-            return
-        if self.stepping:
-            if n.node.gate.mode != 'navigation' or n.node.status.get('motion_mode') != 0:
-                n.stop('Control mode changed during a mapping step. Stopped.', 'failed')
-                return
-            p = n.odom_pose()
-            moved = math.hypot(p[0]-self.step_origin[0], p[1]-self.step_origin[1])
-            if abs(wrap(p[2]-self.step_origin[2])) > .08:
-                n.stop('Mapping step deviated from its heading. Stopped.', 'failed')
-                return
-            clear = forward_step_clear(n.node.lidar_points)
-            if moved >= .025 or now > self.step_deadline or not clear:
-                n.node.gate.stop()
-                self.stepping = False
-                self.selection = None
-                self.next_at = now+2.5
-                n.message = 'Mapping step complete. Stopped briefly to let the map update before replanning…'
-                if moved < .005 and now > self.step_deadline:
-                    n.stop('Mapping step made no useful progress. Stopped; no automatic reverse.', 'failed')
-                return
-            n.node.gate.precision_clear = clear
-            n.node.gate.lease = n.last_heartbeat
-            n.node.gate.receive(.035, 0., now)
-            return
-        if self.scanning:
-            if n.node.gate.mode != 'navigation' or n.node.status.get('motion_mode') != 0:
-                n.stop('Control mode changed during scanning. Stopped.', 'failed')
-                return
-            if n.node.clearance[2] < .40:
-                n.stop('Not enough clearance to scan. Stopped and requested a map save.', 'failed')
-                return
-            angle = n.odom_pose()[2]
-            self.scan_angle += abs(wrap(angle-self.scan_yaw))
-            self.scan_yaw = angle
-            if self.scan_angle >= 2*math.pi:
-                n.node.gate.stop()
-                self.scanning = False
-                self.selection = None
-                self.next_at = now+2.5
-                n.message = 'Surroundings scan complete. Waiting for map updates before selecting a target…'
-                return
-            if now > self.scan_deadline:
-                n.stop('Surroundings scan timed out. Stopped.', 'failed')
-                return
-            n.node.gate.lease = n.last_heartbeat
-            n.node.gate.receive(0., .22, now)
             return
         if n.phase != 'exploring':
             blocked = n.node.reason in ('Obstacle close to chassis', 'No usable front lidar returns', 'No usable rear lidar returns')
@@ -217,6 +160,12 @@ class Explorer:
                 self.obstacle_hold = False
                 self.finish_leg(GoalStatus.STATUS_ABORTED)
             return
+        if self.wait_revision is not None:
+            if n.content_revision <= self.wait_revision:
+                if now > self.map_deadline:
+                    n.stop('Map did not change after reaching the target. Stopped; inspect scan and localization health.', 'failed')
+                return
+            self.wait_revision = None
         if self.planning:
             if now > self.plan_deadline:
                 n.stop('Path precheck timed out. Stopped.', 'failed')
@@ -252,9 +201,7 @@ class Explorer:
                     continue
                 self.check_path(p)
                 return
-            if self.try_straight_step():
-                return
-            n.stop('No reachable exploration targets nearby. A map save was requested. Drive manually to a more open area before exploring again.', 'complete')
+            n.stop('No footprint-safe reachable frontier. Stopped; continue manual mapping to reveal a route.', 'failed')
             return
         transform = n.transform()
         pose = transform_pose(n.odom_pose(), transform)
@@ -275,21 +222,10 @@ class Explorer:
                 if error:
                     n.stop('Frontier calculation failed: '+error, 'failed')
                 else:
-                    if not candidates and self.try_straight_step():
-                        pass
-                    elif not candidates and not self.scan_attempted and self.reached == 0:
-                        self.scan_attempted = True
-                        if n.node.clearance[2] < .40:
-                            n.stop('Forward corridor is blocked or scan coverage is insufficient; rotation is unavailable. Stopped; the map continues updating.', 'failed')
-                            return
-                        self.scanning = True
-                        self.scan_angle = 0.
-                        self.scan_yaw = n.odom_pose()[2]
-                        self.scan_deadline = time.monotonic()+40
-                        n.node.gate.arm('navigation', n.last_heartbeat)
-                        n.message = 'Initial map is incomplete. Turning slowly to scan before selecting a target. Stop is always available.'
-                    else:
-                        self.selection = candidates
+                    if not candidates:
+                        n.stop('No footprint-safe reachable frontier. Stopped; continue manual mapping to reveal a route.', 'failed')
+                        return
+                    self.selection = candidates
                     self.next_at = time.monotonic()
         threading.Thread(target=select, daemon=True).start()
 

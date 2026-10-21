@@ -25,6 +25,7 @@ from std_msgs.msg import String
 from safety import Gate
 from navigation import Navigation
 from lidar_health import LidarHealth
+from scan_quality import scan_metrics
 from mapping_control import MappingControl, export_map
 from speed_settings import load_limits, save_limits, RATED_MAX, ANGULAR_MAX
 
@@ -42,6 +43,7 @@ class Control(Node):
         self.clearance = (0.0, 0.0, 0.0)
         self.scan_points = []
         self.lidar_points = []
+        self.scan_quality = {}
         self.reason = 'Stopped'
         self.output = (0.0, 0.0)
         self.jpeg = None
@@ -110,6 +112,7 @@ class Control(Node):
 
     def on_scan(self, msg):
         with self.lock:
+            self.scan_quality = scan_metrics(msg,self.get_clock().now().nanoseconds)
             front, rear, closest = [], [], []
             points = []
             all_points = []
@@ -133,7 +136,7 @@ class Control(Node):
 
     def on_nav(self, msg):
         with self.lock:
-            if self.gate.mode == 'navigation' and not self.navigation.explorer.stepping:
+            if self.gate.mode == 'navigation':
                 try:
                     self.gate.receive(msg.linear.x, msg.angular.z, time.monotonic())
                 except ValueError:
@@ -244,6 +247,7 @@ class Control(Node):
                         chassis_online=now-self.last_status < 1,
                         lidar_online=now-self.last_scan < 1,
                         lidar=self.lidar.snapshot(),
+                        scan_quality=self.scan_quality,
                         mapping=self.mapping.status(),
                         camera_online=now-self.last_camera < 2,
                         navigation={k:v for k,v in self.navigation.status(compact=True).items()

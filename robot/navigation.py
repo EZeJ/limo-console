@@ -1,5 +1,6 @@
 """Web missions use Nav2; every motion still passes through the command gate."""
 import io
+import hashlib
 import math
 import subprocess
 import threading
@@ -39,6 +40,9 @@ class Navigation:
         self.grid = None
         self.png = None
         self.revision = 0
+        self.content_revision = 0
+        self.map_digest = None
+        self.map_statistics = {}
         self.trail = Trail()
         self.plan = []
         self.target = None
@@ -104,6 +108,13 @@ class Navigation:
         out = io.BytesIO()
         img.save(out, format='PNG')
         with self.node.lock:
+            digest=hashlib.sha256(bytes(v & 255 for v in msg.data)).hexdigest()
+            if digest!=self.map_digest:self.content_revision+=1;self.map_digest=digest
+            free=sum(0<=v<=25 for v in msg.data)
+            occupied=sum(v>=65 for v in msg.data)
+            self.map_statistics=dict(free_area_m2=round(free*msg.info.resolution**2,3),
+                                     occupied_area_m2=round(occupied*msg.info.resolution**2,3),
+                                     content_revision=self.content_revision)
             self.grid, self.png = grid, out.getvalue()
             self.revision += 1
             self.last_map = time.monotonic()
@@ -154,6 +165,8 @@ class Navigation:
             raise ValueError('Stop the current driving session first')
         if not self.ready():
             raise ValueError('Mapping and navigation are not ready yet')
+        if not self.node.scan_quality.get('usable'):
+            raise ValueError('Scan coverage or timestamps are unsuitable for navigation')
         now = time.monotonic()
         status = self.node.status
         if now-self.node.last_status > 1 or now-self.node.last_scan > 1 or now-self.node.last_camera > 2:
