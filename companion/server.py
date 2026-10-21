@@ -59,6 +59,11 @@ class Gateway:
 
 
 def make_handler(gateway,port):
+    # Serve the UI version loaded with this API, never half-edited assets from a running checkout.
+    web=Path(__file__).resolve().parents[1]/'robot/web'
+    static={'/data':'data.html','/data.html':'data.html','/data.js':'data.js','/data-model.js':'data-model.js','/data.css':'data.css',
+            '/messages.js':'messages.js','/i18n.js':'i18n.js','/style.css':'style.css'}
+    assets={route:((web/name).read_bytes(),mimetypes.guess_type(name)[0] or 'application/octet-stream') for route,name in static.items()}
     class Handler(BaseHTTPRequestHandler):
         def valid(self):
             return self.headers.get('Host') in (f'127.0.0.1:{port}',f'localhost:{port}')
@@ -93,11 +98,14 @@ def make_handler(gateway,port):
         def do_GET(self):
             if not self.valid():return self.answer({'error':'Host rejected'},403)
             path=urlsplit(self.path).path
-            static={'/data':'data.html','/data.html':'data.html','/data.js':'data.js','/data-model.js':'data-model.js','/data.css':'data.css',
-                    '/messages.js':'messages.js','/i18n.js':'i18n.js','/style.css':'style.css'}
             if path=='/' and gateway.browse_only:path='/data'
-            if path in static:
-                return self.send_file(Path(__file__).resolve().parents[1]/'robot/web'/static[path])
+            if path in assets:
+                body,kind=assets[path]
+                self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(body)))
+                self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
+                try:self.wfile.write(body)
+                except (BrokenPipeError,ConnectionResetError):pass
+                return
             if path.startswith('/local/data'):
                 try:
                     query=parse_qs(urlsplit(self.path).query)

@@ -15,9 +15,9 @@ Browser → computer companion :18765 → SSH → robot guard :8765
 
 All HTTP listeners use loopback. The companion owns recording independently of browser control polling. POST requests require `X-Limo-Control: 1`, a permitted Host and a matching Origin when supplied; the guard/companion limit bodies to 16 KiB. SSH supplies access control. Use one trusted operator; this is not a multi-user authorization system.
 
-The 20 Hz gate requires fresh chassis/sensor state, fresh commands and a live control lease. Commands expire after 0.3 s; leases after 0.6 s. Recording health expires after 0.75 s, with an independent recorder worker-progress check. Faults disarm, discard commands and require explicit re-arming. `/control/stationary-mode` rejects all motion capabilities. A base-driver 350 ms watchdog covers loss of the guard publisher. These software mechanisms do not certify braking distances.
+The 20 Hz gate requires fresh chassis/sensor state, fresh commands and a live control lease. Commands expire after 0.3 s; leases after 0.6 s. Driving faults disarm, discard commands and require explicit re-arming. Camera and recording health are reported independently and never gate driving; navigation additionally requires fresh lidar. `/control/stationary-mode` rejects all motion capabilities. A base-driver 350 ms watchdog covers loss of the guard publisher. These software mechanisms do not certify braking distances.
 
-Nav2 reads raw lidar and publishes `/cmd_vel`; only the guard publishes `/limo/cmd_vel`. Mapping uses a separate scan channel that turns isolated far spikes into NaN, preserving unknown space. It never removes closer isolated obstacles from the raw collision input. Exploration has finite time, distance and speed budgets and no direct open-loop motion fallback.
+Nav2 reads raw lidar and publishes `/cmd_vel`; only the guard publishes `/limo/cmd_vel`. Mapping uses a separate scan channel that turns isolated far spikes into NaN, preserving unknown space. It never removes closer isolated obstacles from the raw collision input. Exploration has finite time, distance and speed budgets. Its bounded in-place scan fallback uses lidar sweep checks and odometry feedback; the gate rejects any nonzero linear command during that turn.
 
 ## Data contract
 
@@ -25,7 +25,7 @@ One recorder writer serializes ingress and boundary commands. Non-image messages
 
 The camera selects frames at the requested rate and carries source ROS timestamp, capture monotonic/wall time, boot ID, generation, dimensions and sequence. The computer assigns frames to half-open monotonic instance intervals. H.264 uses JPEG transport; FFV1/PNG use verified lossless RGB transport. `frames.csv` records source sequence, capture/receive timestamps, presentation time and RGB hash. Lossless storage is relative to the ROS RGB frame, not camera sensor raw data.
 
-The robot's image history is bounded by 120 frames and 32 MiB encoded bytes, plus a four-frame encoding queue. No image files are written there. Non-image chunks roll every 10 seconds or 64 MiB uncompressed. Spool limit and free-space reserve default to 2 GiB each; the computer reserves 5 GiB. Queue overflow, disk failure, transport gaps or health loss are surfaced and lock driving. The recorder's bounded queue is 32 MiB.
+The robot's image history is bounded by 120 frames and 32 MiB encoded bytes, plus a four-frame encoding queue. No image files are written there. Non-image chunks roll every 10 seconds or 64 MiB uncompressed. Spool limit and free-space reserve default to 2 GiB each; the computer reserves 5 GiB. Queue overflow, disk failure, transport gaps or health loss are surfaced as recording incidents without changing driving state. The recorder's bounded queue is 32 MiB.
 
 Transfer order is download → size/hash verification → file fsync → atomic rename/directory sync → durable receipt → ACK → robot durable deletion receipt → unlink. ACK retries are idempotent. Completed-instance manifests enumerate required chunk IDs; missing receipts prevent a complete status. Camera incidents remain attached to their instance. A crash can lose an unflushed tail; recovery preserves originals and declares incomplete status.
 
@@ -54,7 +54,18 @@ Transfer order is download → size/hash verification → file fsync → atomic 
 | POST `/local/recording/next` `{"request_id":"unique-id","name":"route"}` | Idempotent split without ordinary stop |
 | POST `/local/recording/profile` `{"width":640,"height":480,"fps":10,"format":"h264"}` | Stage next stopped boundary/start profile |
 | POST `/local/recording/retry`, `/local/recording/open-folder` `{}` | Check fault recovery / reveal private local directory |
+| GET `/local/data` | On-disk session/segment catalog, including earlier recordings |
+| GET `/local/data/session?session=ID` | Whole-session overview, playlist, per-segment plots, topic totals and job results |
+| GET `/local/data/detail?session=ID&instance=ID` | Individual segment details |
+| POST `/local/data/session/export`, `/local/data/session/package` `{"session":"ID"}` | Queued batch CSV validation or one session ZIP |
+| POST `/local/data/export`, `/local/data/package` `{"session":"ID","instance":"ID"}` | Individual segment export/package |
+| GET `/local/data/bundle?session=ID[&instance=ID]` | Download a completed whole-session or segment ZIP |
+| GET `/local/data/file?session=ID&instance=ID&file=NAME` | Path-checked local file; HTTP Range supports video seeking. Omit instance for a session-level file |
+| GET `/local/data/frame?session=ID&instance=ID&index=0` | Decode one local preview frame |
+| POST `/local/data/open-folder` `{"session":"ID","instance":"ID"}` | Reveal a local source directory; omit instance for the entire session |
 
 Async map/recording operations require polling until `busy`, `initializing` or `finishing` clears, then examining errors and evidence. HTTP acceptance is not physical success. Retired lidar write endpoints return 410. `/recording/*` and `/capture/*` are companion transport APIs; applications should use the local lifecycle endpoints rather than taking ownership of the robot recorder directly.
 
 Offline replay/export never imports ROS, opens a network connection or publishes topics. It cannot issue chassis commands. See [harness validation](harness.md).
+
+The data library is computer-only and also available with `--browse-only`. Session exports preserve per-segment outputs and write batch summaries under `SESSION/exports/`; session ZIPs preserve directory boundaries. One worker slot serializes exports and packaging. The API reports queued/running/done/partial/error states and individual failures. Refreshing does not cancel jobs. Static library assets are loaded with the server so editing a checkout cannot expose a newer UI against an older running API; restart the companion after code updates when recording has ended.

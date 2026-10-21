@@ -74,7 +74,7 @@ On the computer:
 ./scripts/connect.sh USER@ROBOT_HOST --data-dir /path/to/private/recordings
 ```
 
-Open **http://127.0.0.1:18765/**. Start recording explicitly, wait for readiness, then enable driving. Closing a browser tab does not stop recording while the companion remains running. Keep the companion terminal open. The legacy `tunnel.sh` is for diagnostics/desktop forwarding; it does not provide computer recording, so it cannot enable driving on its own.
+Open **http://127.0.0.1:18765/**. Enable driving explicitly when the chassis is ready; camera and recording are optional. Start recording explicitly when data collection is needed. Closing a browser tab does not stop recording while the companion remains running. Keep the companion terminal open. The legacy `tunnel.sh` is for diagnostics/desktop forwarding; it does not provide computer recording, and does not expose the local data library.
 
 ## Upgrade and rollback
 

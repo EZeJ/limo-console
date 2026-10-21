@@ -23,3 +23,5 @@ Changes to driving require meaningful gate tests: timeout behavior, disarming, c
 Review staged files before committing. Runtime maps, bags, photos, logs, state files, secrets, and personal connection settings do not belong in this repository. Do not add a real robot address to a screenshot or example. Do not publish a running robot endpoint.
 
 Pull requests should explain the concrete behavior change, validation performed, and any remaining hardware assumptions. Preserve upstream license notices when changing integration configuration.
+
+The computer data-library UI is loaded with the server; after editing it, restart the companion when recording has ended, then reload the browser. Use `--browse-only --port 18767` for a separate development instance.

@@ -89,6 +89,16 @@ class DatasetTests(unittest.TestCase):
         gateway=Gateway(None,self.root);server=ThreadingHTTPServer(('127.0.0.1',0),BaseHTTPRequestHandler);server.RequestHandlerClass=make_handler(gateway,server.server_port)
         threading.Thread(target=server.serve_forever,daemon=True).start()
         try:
+            base='http://127.0.0.1:'+str(server.server_port)
+            # A whole recording intentionally has no instance parameter.
+            with urlopen(base+'/local/data/session?session=session') as response:
+                detail=json.load(response)
+                self.assertEqual(detail['scope'],'session');self.assertEqual(detail['frame_count'],2)
+            request=Request(base+'/local/data/session/package',data=b'{"session":"session"}',headers={'X-Limo-Control':'1','Content-Type':'application/json'})
+            with urlopen(request) as response:self.assertEqual(response.status,202)
+            self.wait_job(gateway.datasets.bundles,('session',None))
+            with urlopen(base+'/local/data/bundle?session=session') as response:
+                self.assertEqual(response.status,200);self.assertTrue(response.read().startswith(b'PK'))
             url='http://127.0.0.1:'+str(server.server_port)+'/local/data/file?session=session&instance=instance&file=camera.mp4'
             with urlopen(Request(url,headers={'Range':'bytes=2-5'})) as response:
                 self.assertEqual(response.status,206);self.assertEqual(response.read(),b'2345');self.assertEqual(response.headers['Content-Range'],'bytes 2-5/10')

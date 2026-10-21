@@ -8,9 +8,9 @@
 
 HTTP 均只监听回环地址。POST 需要 `X-Limo-Control: 1`、允许的 Host，以及存在时匹配的 Origin；guard／电脑端请求正文上限 16 KiB。访问控制由 SSH 提供，面向单个可信操作者，不提供多用户授权。
 
-控制门限以 20 Hz 运行。指令 0.3 秒过期，驾驶租约 0.6 秒过期，记录健康 0.75 秒过期；另检查车端写入线程是否推进。异常会清除指令并锁定驾驶，需要重新启用。存在 `/control/stationary-mode` 时拒绝移动。底盘自身还需 350 毫秒看门狗。这些机制不能替代实际停车距离验证。
+控制门限以 20 Hz 运行。指令 0.3 秒过期，驾驶租约 0.6 秒过期。驾驶异常会清除指令并锁定驾驶，需要重新启用；相机和录制健康状态独立报告，不作为驾驶门限。导航另要求雷达新鲜。存在 `/control/stationary-mode` 时拒绝移动。底盘自身还需 350 毫秒看门狗。这些机制不能替代实际停车距离验证。
 
-Nav2 发布 `/cmd_vel`，仅 guard 发布底盘消费的 `/limo/cmd_vel`。碰撞判断使用原始雷达。SLAM 单独使用 `/scan_mapping`：仅将邻近测距一致时孤立的远点标为 NaN，不把异常点变成空地，也不删除原始碰撞输入中的近处孤立障碍。自动探索有时间、距离、速度上限，没有直接盲走兜底。
+Nav2 发布 `/cmd_vel`，仅 guard 发布底盘消费的 `/limo/cmd_vel`。碰撞判断使用原始雷达。SLAM 单独使用 `/scan_mapping`：仅将邻近测距一致时孤立的远点标为 NaN，不把异常点变成空地，也不删除原始碰撞输入中的近处孤立障碍。自动探索有时间、距离、速度上限。原地补扫使用雷达扫掠范围检查与里程计反馈；此阶段的门限拒绝任何非零线速度指令。
 
 ## 数据格式与完整性
 
@@ -18,7 +18,7 @@ Nav2 发布 `/cmd_vel`，仅 guard 发布底盘消费的 `/limo/cmd_vel`。碰�
 
 摄像头按所选帧率采样，携带 ROS 时间戳、采集单调时钟／墙钟、进程 ID、配置代次、尺寸和序号。电脑按单调时钟半开区间分配到实例。H.264 使用 JPEG 传输；FFV1／PNG 使用有像素哈希校验的无损 RGB 传输。`frames.csv` 保存源序号、采集／接收时间、播放时间和 RGB 哈希。无损相对于 ROS RGB，不是传感器原始 Bayer。
 
-车端编码图像历史最多 120 帧、32 MiB，另有四帧编码队列，不写图像文件。非图像 MCAP 每 10 秒或未压缩 64 MiB 滚动；暂存容量和磁盘保留空间默认各 2 GiB，电脑预留 5 GiB。录制队列有 32 MiB 上限。溢出、存储异常、传输缺口或健康过期都会显示并锁定驾驶。
+车端编码图像历史最多 120 帧、32 MiB，另有四帧编码队列，不写图像文件。非图像 MCAP 每 10 秒或未压缩 64 MiB 滚动；暂存容量和磁盘保留空间默认各 2 GiB，电脑预留 5 GiB。录制队列有 32 MiB 上限。溢出、存储异常、传输缺口或健康过期均作为录制异常显示，不改变驾驶状态。
 
 归档顺序：下载 → 大小／哈希校验 → 文件同步 → 原子重命名与目录同步 → 持久化凭据 → ACK → 车端持久化删除凭据 → 删除文件。ACK 可重复。实例清单列出全部必需分段 ID，缺少校验凭据不能标记完成。相机异常保留在对应实例中。崩溃可能丢失未刷盘尾部；恢复工具保留原件并明确标记不完整。
 
@@ -47,7 +47,18 @@ Nav2 发布 `/cmd_vel`，仅 guard 发布底盘消费的 `/limo/cmd_vel`。碰�
 | POST `/local/recording/next` `{"request_id":"unique-id","name":"route"}` | 幂等分段，普通分段不停车 |
 | POST `/local/recording/profile` `{"width":640,"height":480,"fps":10,"format":"h264"}` | 设置下次停车分段或开始录制时使用的规格 |
 | POST `/local/recording/retry`、`/local/recording/open-folder` `{}` | 检查恢复／打开私人目录 |
+| GET `/local/data` | 从磁盘加载会话／分段列表，包含历史录制 |
+| GET `/local/data/session?session=ID` | 整次总览、播放列表、逐段轨迹、话题汇总与作业结果 |
+| GET `/local/data/detail?session=ID&instance=ID` | 单段详情 |
+| POST `/local/data/session/export`、`/local/data/session/package` `{"session":"ID"}` | 排队批量导出校验，或打包整次 ZIP |
+| POST `/local/data/export`、`/local/data/package` `{"session":"ID","instance":"ID"}` | 单段导出／打包 |
+| GET `/local/data/bundle?session=ID[&instance=ID]` | 下载已完成的整次或单段 ZIP |
+| GET `/local/data/file?session=ID&instance=ID&file=NAME` | 校验路径后的本地文件，支持 HTTP Range 视频拖动；会话级文件省略 instance |
+| GET `/local/data/frame?session=ID&instance=ID&index=0` | 解码本地预览帧 |
+| POST `/local/data/open-folder` `{"session":"ID","instance":"ID"}` | 打开本机源目录；省略 instance 时打开整次录制 |
 
 异步操作需要轮询，等待 `busy`／`initializing`／`finishing` 清除，再检查错误和结果证据。HTTP 接受请求不代表实物动作成功。已取消的雷达写接口返回 410。`/recording/*`、`/capture/*` 属于内部传输接口，应用应使用电脑端生命周期接口，不直接抢占车端录制所有权。
 
 离线回放／导出不导入 ROS、不建立网络连接、不发布话题，不能驱动车辆。参见 [harness 验收](harness.zh-CN.md)。
+
+数据浏览仅运行在电脑端，也支持 `--browse-only`。整次导出保留各段输出，并在 `SESSION/exports/` 写入批量汇总；整次 ZIP 保留分段目录。导出和打包共用一个工作槽，API 报告排队、运行、完成、部分失败或失败及逐段结果。刷新页面不会取消作业。数据页面静态资源在服务启动时加载，避免编辑源码后出现新页面请求旧接口；更新代码后应在结束录制时重启电脑端服务。

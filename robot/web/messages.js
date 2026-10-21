@@ -1,5 +1,6 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Selected camera frame rate cannot be sustained": "所选相机帧率无法持续达到",
   "Entire recording": "整次录制",
   "Individual segments": "单独查看分段",
   "segments": "段",

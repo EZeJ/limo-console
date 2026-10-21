@@ -12,9 +12,9 @@ Camera and lidar share one view. Set your forward, reverse and turning limits, m
 
 - **Start recording** opens a session. Connecting or refreshing the browser does not start one.
 - **Next instance / N** divides the current session into routes or tasks without stopping driving.
-- **End recording** closes the session and completes archival. It also disarms driving.
+- **End recording** closes the session and completes archival. It does not stop or disarm driving.
 - **Stop / Space** stops the robot. Recording continues through stops, obstacle pauses and planning waits.
-- A recording fault disarms driving and marks the incident. Available streams continue recording; faults do not masquerade as a user-completed session. Enabling driving requires a healthy recording session.
+- Recording is optional. You can drive without recording; recording faults mark incidents without stopping the robot. Available streams continue, and faults do not masquerade as a user-completed session.
 
 Images and videos are saved only on the computer. The robot keeps a bounded RAM image transport and a bounded non-image MCAP spool. Sensor chunks are deleted from the robot only after the computer checks their SHA-256 and size and durably saves both file and receipt.
 
@@ -22,9 +22,9 @@ Images and videos are saved only on the computer. The robot keeps a bounded RAM 
 
 - Hold-to-drive keyboard/touch controls; independent forward/reverse limits **0–1 m/s**, turning **0–2 rad/s**. Saving limits stops and disarms.
 - Native-aspect camera alongside lidar, battery, measured speed and status. English / 简体中文 throughout.
-- Default **640 × 480, 10 fps H.264 MP4**; selectable native camera resolutions, **FFV1 MKV** or **PNG sequences** for lossless RGB storage. Unsupported throughput locks driving; advertised camera capabilities are not performance guarantees.
-- Raw non-image ROS topics, odometry, IMU, requested and applied controls, chassis state, configuration and operator events in MCAP. Offline CSV export and non-destructive recovery tools.
-- Manual SLAM, map export, SLAM checkpoints and saved-map localization with an explicit starting pose. Bounded frontier exploration uses Nav2 path checks and stops when progress cannot be verified.
+- Default **640 × 480, 10 fps H.264 MP4**; selectable native camera resolutions, **FFV1 MKV** or **PNG sequences** for lossless RGB storage. Unsupported throughput reports a recording error; advertised camera capabilities are not performance guarantees.
+- Raw non-image ROS topics, odometry, IMU, requested and applied controls, chassis state, configuration and operator events in MCAP. A data library for entire recordings or individual segments, continuous playback, trajectory/metric plots, optional map backgrounds, batch CSV validation, ZIP downloads and source-folder access. Offline recovery preserves originals.
+- Manual SLAM, map export, SLAM checkpoints and saved-map localization with an explicit starting pose. Navigation uses lidar, odometry and SLAM, with no vision prerequisite. Bounded exploration uses Nav2 path checks and lidar-checked in-place scan turns with exactly zero linear velocity.
 - A capability harness with observations, bounded operations, outcome checks and offline replay. Motion is disabled in the harness by default. No language model or cloud credential is required.
 - Lidar continuously scans. There is no pause/resume or motor-stop control.
 
@@ -42,7 +42,7 @@ bash /control/manage.sh start
 ./scripts/connect.sh USER@ROBOT_HOST
 ```
 
-Open **http://127.0.0.1:18765/**. Click **Start recording**, wait for readiness, then explicitly enable driving. The SSH helper asks for your own credentials; it stores no password. Recordings default to `~/Documents/Limo Console/recordings/`; choose another directory with `--data-dir PATH`.
+Open **http://127.0.0.1:18765/**. Explicitly enable driving when the chassis is ready. Recording and camera preview are optional; use **Start recording** when you want to collect data. Open **Data** to browse entire recordings or individual segments. The SSH helper asks for your own credentials; it stores no password. Recordings default to `~/Documents/Limo Console/recordings/`; choose another directory with `--data-dir PATH`.
 
 For a read-only synthetic preview without a robot:
 

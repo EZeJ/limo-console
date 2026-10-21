@@ -30,7 +30,8 @@ The report separately checks odometry displacement, map-pose drift, map availabi
 | Sustained recording | 30 minutes at selected profile; no unexplained missing received samples or camera sequence gaps; counters agree with archived files |
 | Lossless video | Decode FFV1 / PNG and compare RGB pixel hashes with transport source hashes |
 | Transfer faults | Corruption, truncation or interrupted ACK never delete an unverified robot copy; retry is idempotent |
-| Storage / disconnect | Motion disarms, fault is visible, originals remain; no automatic re-arming |
+| Storage / disconnect | Recording incidents are visible and originals retained; data faults do not gate driving, while loss of the driving lease stops motion |
+| Session data library | Totals match segment files; batch failures remain visible; continuous playback advances at a boundary; downloaded ZIP hash and contents match |
 | Static SLAM | 60 seconds, odometry displacement <2 cm, map-pose drift <5 cm and <2° |
 | Dynamic SLAM | Independently measured 2 m straight route, 90° turn and closed loop; final pose error ≤15 cm / 5°; inspect wall consistency |
 | Autonomous mapping | Three runs, each reaching at least three reachable frontiers without blind fallback; measured coverage growth and bounded stop |
@@ -43,5 +44,5 @@ Hardware-free tests cannot satisfy the dynamic rows. Publish aggregate results o
 - DDS messages lost before recorder receipt cannot be reconstructed or proved absent by its ingress sequence.
 - Hardware exposes angular velocity, not a physical steering-angle or wheel-encoder topic in the tested driver.
 - Camera/radio/storage throughput depends on the selected native mode and load. A transient buffer overrun is an incident, not silently compressed out of the timeline.
-- A robot under furniture or near a wall may lack a footprint-safe frontier. The controller reports this and stops; it does not move into unknown space just to make a map grow.
+- A robot under furniture or near a wall may lack a footprint-safe frontier. The controller can try a bounded, lidar-checked in-place scan turn with zero linear velocity, then replan. It stops if neither a safe path nor a clear turn is available.
 - Recovered crash tails are incomplete. A restarted camera/robot can require an explicitly new session to establish valid clocks and sequence ownership.
