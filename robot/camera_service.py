@@ -152,8 +152,9 @@ def handler_for(node):
                     if selected:break
                     node.condition.wait(max(0,deadline-time.monotonic()))
             if not selected:return self.answer({'error':node.error or 'Camera frame unavailable'},503)
-            meta,data,kind=selected
-            if time.monotonic_ns()-meta['monotonic_ns']>2*10**9:return self.answer({'error':'Camera frame is stale'},503)
+            source_meta,data,kind=selected
+            meta=dict(source_meta,transport_age_s=(time.monotonic_ns()-source_meta['monotonic_ns'])/1e9)
+            if after<0 and meta['transport_age_s']>2:return self.answer({'error':'Camera frame is stale'},503)
             self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)))
             self.send_header('X-Limo-Frame',json.dumps(meta,separators=(',',':')));self.send_header('Cache-Control','no-store');self.end_headers()
             try:self.wfile.write(data)

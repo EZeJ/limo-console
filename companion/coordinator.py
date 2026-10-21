@@ -154,7 +154,7 @@ class Coordinator:
                     if not target:continue
                     writer=self.writers[target['instance_id']]
                     writer.write(meta,data)
-                    self.frame_count+=1;self.last_frame=time.monotonic()
+                    self.frame_count+=1;self.last_frame=time.monotonic()-meta.get('transport_age_s',0)
                     for item in self.instances:
                         if item.get('end_monotonic_ns',10**30)<=meta['monotonic_ns']:
                             previous=self.writers[item['instance_id']]
