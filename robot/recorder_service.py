@@ -21,6 +21,8 @@ class RecorderNode(Node):
         super().__init__('limo_console_recorder')
         self.recorder=Recorder(os.environ.get('LIMO_RECORDING_SPOOL','/control/recordings'))
         self.subscriptions_by_topic={}
+        self.subscription_settings={}
+        self.last_sample={}
         self.definitions={}
         self.unavailable={}
         self.skipped={}
@@ -36,23 +38,32 @@ class RecorderNode(Node):
 
     def discover(self):
         for topic,types in self.get_topic_names_and_types():
-            if topic in self.subscriptions_by_topic or topic=='/console/recording_health':continue
+            if topic=='/console/recording_health':continue
             if len(types)!=1:
                 self.unavailable[topic]='Multiple message types';continue
             typename=types[0]
             if typename in ('sensor_msgs/msg/Image','sensor_msgs/msg/CompressedImage'):
                 self.skipped[topic]='Images stream directly to the computer';continue
+            endpoints=self.get_publishers_info_by_topic(topic)
+            # A subscriber-only graph entry cannot establish publisher QoS.
+            # In particular /scan may appear before its best-effort driver starts.
+            if not endpoints:continue
             try:
-                msgtype=get_message(typename)
-                definition=self.definitions.setdefault(typename,message_definition(typename,get_message))
-                endpoints=self.get_publishers_info_by_topic(topic)
                 reliable=all(p.qos_profile.reliability==ReliabilityPolicy.RELIABLE for p in endpoints)
                 latched=topic=='/tf_static' or topic.endswith('/camera_info')
                 durability=DurabilityPolicy.TRANSIENT_LOCAL if endpoints and all(p.qos_profile.durability==DurabilityPolicy.TRANSIENT_LOCAL for p in endpoints) else DurabilityPolicy.VOLATILE
+                settings=(typename,reliable,durability)
+                if self.subscription_settings.get(topic)==settings:continue
+                if topic in self.subscriptions_by_topic:self.destroy_subscription(self.subscriptions_by_topic.pop(topic))
+                msgtype=get_message(typename)
+                if typename not in self.definitions:self.definitions[typename]=message_definition(typename,get_message)
+                definition=self.definitions[typename]
                 qos=QoSProfile(depth=100,reliability=ReliabilityPolicy.RELIABLE if reliable else ReliabilityPolicy.BEST_EFFORT,durability=durability)
                 def callback(data,t=topic,ty=typename,d=definition,l=latched):
+                    self.last_sample[t]=time.monotonic()
                     self.recorder.append(t,ty,d,data,latched=l)
                 self.subscriptions_by_topic[topic]=self.create_subscription(msgtype,topic,callback,qos,raw=True)
+                self.subscription_settings[topic]=settings
                 self.unavailable.pop(topic,None)
             except Exception as exc:self.unavailable[topic]=str(exc)
 
@@ -60,6 +71,10 @@ class RecorderNode(Node):
         status=self.recorder.snapshot()
         status.update(topics=list(self.subscriptions_by_topic),unavailable=dict(self.unavailable),skipped=dict(self.skipped))
         if self.unavailable:status['ready']=False;status['error']='Some ROS topics could not be recorded'
+        required=('/scan','/odom','/imu','/limo_status')
+        missing=[topic for topic in required if time.monotonic()-self.last_sample.get(topic,float('-inf'))>2]
+        status['missing_topics']=missing
+        if status['active'] and missing:status['ready']=False;status['error']='Required sensor topics are not arriving: '+', '.join(missing)
         return status
 
     def publish_health(self):
