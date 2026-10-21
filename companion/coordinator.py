@@ -25,6 +25,7 @@ class Coordinator:
         self.pending_profile=None
         self.error='';self.last_frame=0.;self.frame_count=0;self.gaps=0
         self.last_seq=-1;self.boot=None;self.latest_frame=None
+        self.capture_generation=None
         self.archived_chunks=0;self.archived_bytes=0;self.last_archived=''
         self.free_bytes=shutil.disk_usage(self.root).free
         self.halt=threading.Event();self.threads=[];self.active=False;self.switching=False
@@ -42,6 +43,7 @@ class Coordinator:
         self.profile=dict(profile or DEFAULT_PROFILE)
         camera=self.request('/capture/configure',self.profile,timeout=15)
         self.last_seq=camera['sequence']
+        self.capture_generation=camera.get('generation')
         if shutil.disk_usage(self.root).free<self.reserve:raise ValueError('Computer recording storage is full')
         boundary=self.request('/recording/start',{'request_id':uuid.uuid4().hex,'owner':self.owner,
                               'metadata':{'camera_profile':self.profile,'clock':'robot_monotonic_ns','version':1}},timeout=25)
@@ -115,6 +117,7 @@ class Coordinator:
             if self.pending_profile:
                 camera=self.request('/capture/configure',self.pending_profile,timeout=15)
                 self.profile=self.pending_profile;self.pending_profile=None;self.last_seq=camera['sequence']
+                self.capture_generation=camera.get('generation')
             self._add_instance(boundary)
             if self.switching:self.warmup_started=time.monotonic();self.warmup_count=self.frame_count
             self.switching=False
@@ -139,6 +142,7 @@ class Coordinator:
                     kind=response.headers['Content-Type']
                 meta['receive_wall_ns']=time.time_ns()
                 with self.lock:
+                    if self.capture_generation is not None and meta['generation']!=self.capture_generation:continue
                     if self.boot and meta['boot_id']!=self.boot:raise ValueError('Camera transport restarted; start a new recording session')
                     self.boot=meta['boot_id']
                     if self.last_seq>=0 and meta['sequence']!=self.last_seq+1:
@@ -189,6 +193,7 @@ class Coordinator:
                     for item in self.instances:
                         remote_item=by_id.get(item['instance_id'])
                         if remote_item:
+                            if item.get('sensors')==remote_item and item.get('status') not in ('closing','video_saved','pending_transfer','pending_verification'):continue
                             item['sensor_status']=remote_item['status']
                             item['sensors']=remote_item
                             if remote_item['status']!='recording' and self.writers[item['instance_id']].closed:

@@ -47,8 +47,10 @@ class CameraBridge(Node):
     def __init__(self):
         super().__init__('limo_console_camera_transport')
         self.condition=threading.Condition()
-        self.frames=deque(maxlen=12)
-        self.pending=queue.Queue(maxsize=2)
+        self.frames=deque(maxlen=120)
+        self.frame_bytes=0
+        self.ram_limit=32*1024**2
+        self.pending=queue.Queue(maxsize=4)
         self.config={'width':640,'height':480,'fps':10,'format':'h264'}
         self.generation=0
         self.sequence=0
@@ -91,7 +93,10 @@ class CameraBridge(Node):
                 with self.condition:
                     if meta['generation']==self.generation:
                         meta['encoded_monotonic_ns']=time.monotonic_ns()
-                        self.frames.append((meta,stream.getvalue(),kind))
+                        encoded=stream.getvalue()
+                        while self.frames and (len(self.frames)>=self.frames.maxlen or self.frame_bytes+len(encoded)>self.ram_limit):
+                            self.frame_bytes-=len(self.frames.popleft()[1])
+                        self.frames.append((meta,encoded,kind));self.frame_bytes+=len(encoded)
                         self.condition.notify_all()
             except Exception as exc:self.error=str(exc)
             finally:self.pending.task_done()
@@ -99,6 +104,7 @@ class CameraBridge(Node):
     def status(self):
         return dict(config=dict(self.config),native_resolution=list(self.source),resolutions=[list(v) for v in self.available],
                     formats=['h264','ffv1','png'],boot_id=self.boot,sequence=self.sequence,dropped=self.drops,error=self.error,
+                    generation=self.generation,buffer_bytes=self.frame_bytes,buffer_limit_bytes=self.ram_limit,
                     source_age=round(time.monotonic()-self.last_source,3),robot_image_files=False)
 
     def configure(self,config):
@@ -120,7 +126,7 @@ class CameraBridge(Node):
             if self.source!=(width,height):raise ValueError('Camera did not produce the requested native resolution')
         with self.condition:
             self.config=dict(width=width,height=height,fps=fps,format=fmt)
-            self.generation+=1;self.frames.clear();self.error='';self.drops=0;self.next_at=0
+            self.generation+=1;self.frames.clear();self.frame_bytes=0;self.error='';self.drops=0;self.next_at=0
         return self.status()
 
 

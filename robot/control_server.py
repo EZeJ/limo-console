@@ -139,7 +139,9 @@ class Control(Node):
         with self.lock:
             if self.gate.mode == 'navigation':
                 try:
-                    self.gate.receive(msg.linear.x, msg.angular.z, time.monotonic())
+                    speed=msg.linear.x
+                    if self.navigation.explorer.active:speed=min(speed,self.navigation.explorer.max_speed)
+                    self.gate.receive(speed, msg.angular.z, time.monotonic())
                 except ValueError:
                     self.gate.stop()
 
@@ -229,7 +231,7 @@ class Control(Node):
             elif path == '/navigation/goal':
                 self.navigation.navigate(data['x'], data['y'])
             elif path == '/navigation/explore':
-                self.navigation.explorer.start()
+                self.navigation.explorer.start(data.get('max_seconds',120),data.get('max_distance',6),data.get('max_speed',.15))
             elif path == '/navigation/return':
                 self.navigation.return_home(data.get('mode', 'auto'))
             elif path == '/drive':

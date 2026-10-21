@@ -27,6 +27,7 @@ class Explorer:
         self.save_message = ''
         self.max_seconds = 120.
         self.max_distance = 6.
+        self.max_speed = .15
         self.planning = False
         self.plan_handle = None
         self.plan_deadline = 0.
@@ -46,12 +47,16 @@ class Explorer:
         self.step_count = 0
         self.wait_revision = None
 
-    def start(self):
+    def start(self,max_seconds=120.,max_distance=6.,max_speed=.15):
         n = self.nav
+        values=[float(max_seconds),float(max_distance),float(max_speed)]
+        if not all(math.isfinite(v) for v in values) or not (5<=values[0]<=300 and .1<=values[1]<=10 and .03<=values[2]<=.5):
+            raise ValueError('Exploration limits must be 5–300 s, 0.1–10 m and 0.03–0.5 m/s')
         n.check_ready()
         if not n.planner.server_is_ready():
             raise ValueError('Path planning service is not ready')
         self.active = True
+        self.max_seconds,self.max_distance,self.max_speed=values
         self.scanning = self.scan_attempted = False
         self.stepping = False
         self.step_count = 0
@@ -324,5 +329,5 @@ class Explorer:
                     obstacle_paused=self.obstacle_hold,
                     elapsed=round(time.monotonic()-self.started, 1) if self.active else 0,
                     distance=round(self.nav.trail.length, 2), max_seconds=self.max_seconds,
-                    max_distance=self.max_distance, max_speed=.5,
+                    max_distance=self.max_distance, max_speed=self.max_speed,
                     saved_map=self.saved_map, save_message=self.save_message)

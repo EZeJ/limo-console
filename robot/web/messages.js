@@ -1,5 +1,6 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Exploration limits must be 5–300 s, 0.1–10 m and 0.03–0.5 m/s": "探索范围应为 5–300 秒、0.1–10 米、0.03–0.5 米／秒",
   "Heading (degrees)": "朝向（度）",
   "Load saved map & localize": "加载地图并定位",
   "Load a saved map using the robot's actual pose on that map. Loading never sends a driving goal.": "填写机器人在所选地图上的实际位置和朝向。加载地图只启动定位，不会发出驾驶目标。",
