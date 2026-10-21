@@ -1,5 +1,6 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Stationary maintenance mode; driving is locked": "静止维护模式：驾驶已锁定",
   Stopped: "已停止",
   "Navigation stopped.": "导航已停止。",
   "Chassis paused or not ready (state 1); check the robot pause button":

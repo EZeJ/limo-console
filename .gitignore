@@ -4,6 +4,7 @@ robot/logs/
 robot/*-state.json
 robot/manual-speed.json
 robot/mapping-engine
+robot/stationary-mode
 robot/*.tmp
 robot/*.new
 robot/.backup*/

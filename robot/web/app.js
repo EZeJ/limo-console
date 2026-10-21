@@ -108,6 +108,7 @@ function render(s) {
   $("#arm").disabled =
     speedBusy ||
     mapBusy ||
+    s.stationary_mode ||
     (!s.demo && !s.recording?.ready) ||
     !!(s.navigation && s.navigation.preparing) ||
     exploreRequested ||
@@ -126,6 +127,7 @@ function render(s) {
         !videoFresh ||
         speedBusy ||
         mapBusy ||
+        s.stationary_mode ||
         (!s.demo && !s.recording?.ready)),
   );
   $("#battery").textContent = Number(s.chassis.battery_voltage || 0).toFixed(1);
@@ -522,6 +524,7 @@ function renderNav(n) {
   const active = activePhases.includes(n.phase),
     hardwareReady =
       state &&
+      !state.stationary_mode &&
       state.chassis_online &&
       state.chassis.vehicle_state === 0 &&
       state.chassis.control_mode === 1 &&
@@ -783,7 +786,9 @@ function renderLidarState(s) {
   $("#lidarDetail").textContent = t(
     online ? "Lidar is scanning" : "No scan data",
   );
-  $("#driveReadiness").textContent = !s.chassis_online
+  $("#driveReadiness").textContent = s.stationary_mode
+    ? t("Stationary maintenance mode; driving is locked")
+    : !s.chassis_online
     ? t("Chassis offline. Check the connection.")
     : !s.camera_online
       ? t("Wait for the camera to reconnect.")

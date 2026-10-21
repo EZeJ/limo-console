@@ -33,6 +33,7 @@ class Control(Node):
     def __init__(self):
         super().__init__('limo_console_guard')
         self.lock = threading.RLock()
+        self.stationary_lock = Path('/control/stationary-mode')
         self.speed_settings_path = Path('/control/manual-speed.json')
         self.gate = Gate(**load_limits(self.speed_settings_path))
         self.last_status = self.last_scan = self.last_camera = float('-inf')
@@ -95,6 +96,8 @@ class Control(Node):
         return ''
 
     def require_recording(self):
+        if self.stationary_lock.exists():
+            raise ValueError('Stationary maintenance mode; driving is locked')
         reason = self.recording_problem()
         if reason: raise ValueError(reason)
 
@@ -141,8 +144,10 @@ class Control(Node):
             now = time.monotonic()
             self.lidar.tick(now-self.last_scan)
             recording_problem = self.recording_problem()
-            if recording_problem and self.gate.mode != 'stopped':
-                self.navigation.stop(recording_problem)
+            motion_problem = ('Stationary maintenance mode; driving is locked'
+                              if self.stationary_lock.exists() else recording_problem)
+            if motion_problem and (self.gate.mode != 'stopped' or self.navigation.explorer.active):
+                self.navigation.stop(motion_problem)
                 self.gate.stop()
             self.navigation.tick()
             self.output, self.reason = self.gate.output(now, now-self.last_status, now-self.last_scan, *self.clearance, self.status.get('error_code', 0), self.status.get('motion_mode', -1), camera_age=now-self.last_camera, vehicle_state=self.status.get('vehicle_state', -1), control_mode=self.status.get('control_mode', -1))
@@ -155,7 +160,7 @@ class Control(Node):
                                         reason=self.reason, limits=self.gate.manual_limits, odometry=self.odom,
                                         recording_ready=not bool(recording_problem)), allow_nan=False)
             self.tick_pub.publish(audit)
-            if recording_problem and self.gate.mode == 'stopped': self.reason = recording_problem
+            if motion_problem and self.gate.mode == 'stopped': self.reason = motion_problem
 
     def stop_motion(self):
         self.navigation.stop()
@@ -231,6 +236,7 @@ class Control(Node):
             elif path != '/status':
                 raise ValueError('Unknown endpoint')
             return dict(mode=self.gate.mode, reason=self.reason, chassis=self.status,
+                        stationary_mode=self.stationary_lock.exists(),
                         recording=dict(self.recording, ready=not bool(self.recording_problem())),
                         manual_speed=dict(self.gate.manual_limits, rated_max=RATED_MAX, angular_max=ANGULAR_MAX),
                         odometry=self.odom, output=self.output,
