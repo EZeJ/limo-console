@@ -37,6 +37,24 @@ class LimoHarness:
     def start_mapping(self,backend='cartographer'):
         self.request('/mapping/start',{'backend':backend})
         return self.wait('mapping_pipeline_started',lambda s:s['mapping']['active'] and not s['mapping']['busy'],35)
+    def scan_in_place(self):
+        """One observed full lidar sweep; never advances and always stops on exit."""
+        if not self.allow_motion:raise ValueError('Motion is disabled for this harness')
+        before=self.observe();samples=[];progress=0.;last_yaw=before['odometry']['yaw']
+        try:
+            state=self.request('/navigation/scan',{})
+            mission=state['navigation']['mission_id'];deadline=time.monotonic()+54
+            while time.monotonic()<deadline:
+                self.request('/heartbeat',{'mission_id':mission})
+                state=self.observe();samples.append(state)
+                yaw=state['odometry']['yaw'];progress+=math.atan2(math.sin(yaw-last_yaw),math.cos(yaw-last_yaw));last_yaw=yaw
+                if not state['navigation']['exploration']['active']:break
+                time.sleep(.1)
+        finally:stopped=self.stop()
+        completed=bool(samples and samples[-1]['navigation']['message']=='360° lidar scan complete. Robot stopped.')
+        zero_linear=all(s['output'][0]==0 for s in samples)
+        return Outcome('scan_in_place',completed and abs(progress)>=2*math.pi-.05 and zero_linear and stopped.verified,
+                       {'rotation_rad':progress,'zero_linear_output':zero_linear,'samples':samples,'stopped':stopped.evidence})
     def wait(self,operation,predicate,seconds):
         deadline=time.monotonic()+seconds;state={}
         while time.monotonic()<deadline:
