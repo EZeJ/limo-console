@@ -74,7 +74,7 @@ class Datasets:
             map_info=json.loads(self.file(session,instance,'map.json').read_text())
         return {'manifest':manifest,'files':files,'topics':dict(counts),'trajectory':trajectory,'trajectory_start_ns':t0,'events':events,
                 'map':map_info,
-                'source_directory':str(root),'bundle':self.bundles.get((session,instance),{'state':'not_bundled'}),
+                'source_directory':str(root),'bundle':self.bundle_status(session,instance),
                 'frame_count':len(frames),'duration_s':float(frames[-1]['pts_us'])/1e6 if frames else 0,
                 'export':self.jobs.get((session,instance),{'state':'done' if odometry.exists() else 'not_exported'})}
     def frame_table(self,session,instance):
@@ -141,18 +141,31 @@ class Datasets:
                         for path,name in files:archive.write(path,name);job['files_done']+=1
                     with temporary.open('rb') as file:os.fsync(file.fileno())
                     os.replace(temporary,target);sync_dir(folder)
-                    self.bundles[key]={'state':'done','filename':target.name,'bytes':target.stat().st_size,'sha256':sha256_file(target)}
+                    info={'state':'done','filename':target.name,'bytes':target.stat().st_size,'sha256':sha256_file(target)}
+                    atomic_json(target.with_suffix('.zip.json'),info);self.bundles[key]=info
                 except Exception as exc:self.bundles[key]={'state':'error','error':str(exc)}
         threading.Thread(target=work,daemon=True).start()
         return self.bundles[key]
 
     def bundle_file(self,session,instance):
         self.folder(session,instance)
-        info=self.bundles.get((session,instance),{})
+        info=self.bundle_status(session,instance)
         if info.get('state')!='done':raise ValueError('Package is not ready')
         path=self.root/'.downloads'/info['filename']
-        if path.is_symlink() or not path.is_file():raise ValueError('Package is not available')
+        if path.parent.is_symlink() or path.is_symlink() or not path.is_file():raise ValueError('Package is not available')
         return path
+
+    def bundle_status(self,session,instance):
+        key=(session,instance)
+        if key in self.bundles:return self.bundles[key]
+        filename=checked(session)+('_'+checked(instance) if instance is not None else '')+'.zip'
+        folder=self.root/'.downloads';metadata=folder/(filename+'.json');archive=folder/filename
+        try:
+            if folder.is_symlink() or metadata.is_symlink() or archive.is_symlink():raise ValueError('Invalid download folder')
+            info=json.loads(metadata.read_text())
+            if info.get('state')=='done' and info.get('filename')==filename and archive.stat().st_size==info['bytes']:return info
+        except (OSError,ValueError,KeyError):pass
+        return {'state':'not_bundled'}
 
     def session_instances(self,session):
         root=self.session_folder(session)
@@ -189,7 +202,7 @@ class Datasets:
                 'source_directory':str(root),'frame_count':sum(s['frame_count'] for s in segments),
                 'duration_s':sum(s['duration_s'] for s in segments),'closed':closed,
                 'export':self.jobs.get((session,None),saved_export),
-                'bundle':self.bundles.get((session,None),{'state':'not_bundled'})}
+                'bundle':self.bundle_status(session,None)}
 
     def closed_session(self,session):
         instances=self.session_instances(session)
@@ -253,7 +266,8 @@ class Datasets:
                         for path,name in files:archive.write(path,name);job['files_done']+=1
                     with temporary.open('rb') as file:os.fsync(file.fileno())
                     os.replace(temporary,target);sync_dir(folder)
-                    self.bundles[key]={'state':'done','filename':target.name,'bytes':target.stat().st_size,'sha256':sha256_file(target)}
+                    info={'state':'done','filename':target.name,'bytes':target.stat().st_size,'sha256':sha256_file(target)}
+                    atomic_json(target.with_suffix('.zip.json'),info);self.bundles[key]=info
                 except Exception as exc:
                     self.bundles[key]={'state':'error','error':str(exc)}
                     if temporary is not None:temporary.unlink(missing_ok=True)

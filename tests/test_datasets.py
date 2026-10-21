@@ -47,6 +47,7 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(archive.read('instance/camera.mp4'),b'first');self.assertEqual(archive.read('second/camera.mp4'),b'second')
             self.assertIn('configuration.json',archive.namelist());self.assertIsNone(archive.testzip())
         self.assertEqual((second/'camera.mp4').read_bytes(),b'second')
+        self.assertEqual(Datasets(self.root).bundle_file('session',None),self.store.bundle_file('session',None))
     def test_batch_export_reports_failure_and_continues_other_segments(self):
         self.add_segment('second');self.add_segment('third')
         def inspect(folder,export):
@@ -83,6 +84,7 @@ class DatasetTests(unittest.TestCase):
             self.assertIn('_session/configuration.json',archive.namelist())
             self.assertIsNone(archive.testzip())
         self.assertTrue((self.folder/'camera.mp4').is_file())
+        self.assertEqual(Datasets(self.root).bundle_file('session','instance'),path)
 
     def test_video_range_seeking_and_idle_browsing(self):
         (self.folder/'camera.mp4').write_bytes(b'0123456789')
