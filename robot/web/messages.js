@@ -1,5 +1,8 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Scanning in place: linear speed is zero. Completing a 360° lidar sweep.": "正在原地进行 360° 雷达补扫，线速度为零。",
+  "360° lidar scan complete. Robot stopped.": "360° 雷达补扫完成，车辆已停止。",
+  "No clear rotation sweep. Robot stopped.": "转向扫掠范围不畅通，车辆已停止。",
   "Selected camera frame rate cannot be sustained": "所选相机帧率无法持续达到",
   "Entire recording": "整次录制",
   "Individual segments": "单独查看分段",

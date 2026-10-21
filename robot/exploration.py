@@ -49,6 +49,7 @@ class Explorer:
         self.wait_revision = None
         self.scan_turn=None
         self.scan_headings=[]
+        self.scan_only=False
 
     def start(self,max_seconds=120.,max_distance=6.,max_speed=.15):
         n = self.nav
@@ -61,6 +62,7 @@ class Explorer:
         self.active = True
         self.max_seconds,self.max_distance,self.max_speed=values
         self.scanning = self.scan_attempted = False
+        self.scan_only=False
         self.stepping = False
         self.step_count = 0
         self.wait_revision = None
@@ -91,13 +93,20 @@ class Explorer:
         n.phase = 'exploring'
         n.message = 'Exploration: looking for reachable frontiers…'
 
-    def try_pivot(self):
+    def start_scan(self):
+        self.start(max_seconds=50,max_distance=.1,max_speed=.05)
+        self.scan_only=True
+        if not self.try_pivot(full=True):
+            self.nav.stop('No clear rotation sweep. Robot stopped.','failed')
+            raise ValueError('No clear rotation sweep. Robot stopped.')
+
+    def try_pivot(self,full=False):
         n=self.nav
         if len(self.scan_headings)>=13:return False
         yaw=n.odom_pose()[2]
-        for angle in (.35,-.35):
+        for angle in ((2*math.pi,-2*math.pi) if full else (.35,-.35)):
             target=wrap(yaw+angle)
-            if any(abs(wrap(target-old))<.20 for old in self.scan_headings):continue
+            if not full and any(abs(wrap(target-old))<.20 for old in self.scan_headings):continue
             if not rotation_clear(n.node.lidar_points,angle):continue
             self.scanning=True;self.scan_turn=Pivot(yaw,time.monotonic(),angle)
             self.scan_origin=n.odom_pose();self.scan_map_revision=n.content_revision
@@ -105,6 +114,7 @@ class Explorer:
             n.node.gate.arm('navigation',n.last_heartbeat)
             n.node.gate.pivot_active=True
             n.message='Scanning in place: linear speed is zero. Turning briefly, then stopping to replan.'
+            if full:n.message='Scanning in place: linear speed is zero. Completing a 360° lidar sweep.'
             return True
         return False
 
@@ -162,6 +172,8 @@ class Explorer:
             command,done=self.scan_turn.command(pose[2],now)
             if done:
                 n.node.gate.stop();self.scanning=False;self.selection=None
+                if self.scan_only:
+                    n.stop('360° lidar scan complete. Robot stopped.','complete');return
                 self.wait_revision=self.scan_map_revision;self.map_deadline=now+8;self.next_at=now+1
                 n.message='In-place scan complete. Waiting for map updates before replanning.'
             else:

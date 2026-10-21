@@ -176,9 +176,9 @@ class Control(Node):
             now = time.monotonic()
             if path not in ('/status', '/heartbeat'):
                 self.log_event('request', {'path':path, 'arguments':data})
-            if path in ('/arm', '/drive', '/navigation/goal', '/navigation/explore', '/navigation/return'):
+            if path in ('/arm', '/drive', '/navigation/goal', '/navigation/explore', '/navigation/return','/navigation/scan'):
                 self.require_motion_allowed()
-            if path in ('/navigation/prepare', '/navigation/goal', '/navigation/explore', '/navigation/return'):
+            if path in ('/navigation/prepare', '/navigation/goal', '/navigation/explore', '/navigation/return','/navigation/scan'):
                 self.lidar.require_scanning()
             if path == '/mapping/start':
                 self.lidar.require_scanning()
@@ -225,6 +225,8 @@ class Control(Node):
                 self.navigation.navigate(data['x'], data['y'])
             elif path == '/navigation/explore':
                 self.navigation.explorer.start(data.get('max_seconds',120),data.get('max_distance',6),data.get('max_speed',.15))
+            elif path == '/navigation/scan':
+                self.navigation.explorer.start_scan()
             elif path == '/navigation/return':
                 self.navigation.return_home(data.get('mode', 'auto'))
             elif path == '/drive':

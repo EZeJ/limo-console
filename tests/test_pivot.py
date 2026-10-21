@@ -31,3 +31,16 @@ class PivotTests(unittest.TestCase):
         turn.command(-math.pi+.1,1)
         self.assertAlmostEqual(turn.progress,.2)
         with self.assertRaises(ValueError):turn.command(-math.pi+.1,10)
+    def test_full_circle_integrates_yaw_wrap_and_stops(self):
+        turn=Pivot(2.8,0,angle=2*math.pi)
+        for i in range(72):
+            yaw=math.atan2(math.sin(2.8+i*.09),math.cos(2.8+i*.09))
+            command,done=turn.command(yaw,i*.5)
+            self.assertEqual(command[0],0)
+            if done:break
+        self.assertTrue(done);self.assertEqual(command,(0,0))
+        self.assertAlmostEqual(turn.progress,6.3)
+    def test_full_sweep_includes_body_corners_in_every_direction(self):
+        self.assertFalse(rotation_clear([(.24,0)],2*math.pi))
+        self.assertFalse(rotation_clear([(-.26,0)],-2*math.pi))
+        self.assertTrue(rotation_clear([(.29,0),(0,-.4)],2*math.pi))
