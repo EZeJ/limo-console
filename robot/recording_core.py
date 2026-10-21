@@ -113,6 +113,8 @@ class Recorder:
         self.latest = {}
         self.chunks = {}
         self.completed = []
+        self.instance_number=0
+        self.ingress_instance=None
         self.pc_at = float('-inf')
         self.pc_ok = False
         self.owner = None
@@ -196,7 +198,16 @@ class Recorder:
         with self.lock:
             if request_id in self.requests: return self.requests[request_id]
             if owner != self.owner or not self.active or self.error: raise ValueError('Recording is not ready')
-        return self._command('split', dict(request_id=request_id, name=name))
+            self.instance_number+=1
+            boundary=dict(session_id=self.session,previous_instance_id=self.ingress_instance,
+                          instance_id=f'{self.instance_number:04d}_{uuid.uuid4().hex[:12]}',name=name,
+                          monotonic_ns=time.monotonic_ns(),wall_ns=time.time_ns(),sequence=self.sequence,started_at=utc())
+            self.ingress_instance=boundary['instance_id']
+            self.requests[request_id]=dict(boundary)
+            # The ordered ingress boundary is established immediately. Disk closure
+            # belongs to the writer; never hold the PC's frame/heartbeat loop for fsync.
+            self.jobs.put(('split',dict(request_id=request_id,name=name,boundary=boundary),Future()))
+            return dict(boundary)
 
     def finish(self, owner, interrupted=False):
         if owner != self.owner: raise ValueError('Recording owner mismatch')
@@ -261,7 +272,7 @@ class Recorder:
 
     def _new_instance(self, name='', captured=None):
         old = self.instance
-        self.instance = f'{len(self.completed)+1:04d}_{uuid.uuid4().hex[:12]}'
+        self.instance = (captured or {}).get('instance_id') or f'{len(self.completed)+1:04d}_{uuid.uuid4().hex[:12]}'
         boundary = dict(session_id=self.session, previous_instance_id=old,
                         instance_id=self.instance, name=name, monotonic_ns=time.monotonic_ns(),
                         wall_ns=time.time_ns(), sequence=self.sequence, started_at=utc())
@@ -310,7 +321,7 @@ class Recorder:
                 else:
                     # The writer owns file lifecycle. Ingress keeps queueing during fsync.
                     request = payload.get('request_id')
-                    if request in self.requests:
+                    if action!='split' and request in self.requests:
                         result = self.requests[request]
                     elif action == 'start':
                         if self.sink: self._end_instance('interrupted')
@@ -321,7 +332,7 @@ class Recorder:
                         self.owner=payload['owner'];self.pc_ok=False
                         (self.root/self.session).mkdir()
                         atomic_json(self.root/self.session/'session.json',dict(version=1,session_id=self.session,started_at=utc(),metadata=payload['metadata']))
-                        result=self._new_instance();self.active=True
+                        result=self._new_instance();self.instance_number=1;self.ingress_instance=self.instance;self.active=True
                     elif action == 'split':
                         self._end_instance('complete',payload['boundary'])
                         result=self._new_instance(payload['name'],payload['boundary'])

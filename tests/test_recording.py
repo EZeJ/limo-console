@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import time
+import threading
 import unittest
 from types import SimpleNamespace
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'robot'))
@@ -40,6 +41,7 @@ class RecordingTests(unittest.TestCase):
         self.assertTrue(all(row[0]==second['instance_id'] for row in rows if row[2]>=30))
     def test_ack_requires_checksum_and_size_before_deleting(self):
         self.sample(1);self.r.split('cut','owner')
+        self.r.jobs.join()
         item=self.r.list_chunks()[0];path=self.r.chunk_path(item['chunk_id'])
         with self.assertRaises(ValueError):self.r.acknowledge(item['chunk_id'],'wrong',item['bytes'])
         self.assertTrue(path.exists())
@@ -65,6 +67,23 @@ class RecordingTests(unittest.TestCase):
         self.assertFalse(self.r.capacity())
     def test_path_traversal_rejected(self):
         with self.assertRaises(ValueError):self.r.chunk_path('../secret')
+    def test_split_returns_before_slow_disk_close_without_blocking_ingress(self):
+        entered,release=threading.Event(),threading.Event()
+        original=self.r.sink.close
+        def slow_close():
+            entered.set();release.wait(2);original()
+        self.r.sink.close=slow_close
+        self.sample(0)
+        before=time.monotonic();boundary=self.r.split('slow_boundary','owner')
+        self.assertLess(time.monotonic()-before,.2)
+        self.assertTrue(entered.wait(1))
+        self.r.heartbeat('owner',True)
+        self.sample(1)
+        self.assertTrue(self.r.snapshot()['ready'])
+        release.set();self.r.finish('owner')
+        rows=self.messages()
+        self.assertEqual([(r[0],r[2]) for r in rows],[(self.first['instance_id'],0),(boundary['instance_id'],1)])
+
     def test_twenty_continuous_boundaries(self):
         for i in range(20):
             self.sample(i)
