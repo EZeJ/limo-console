@@ -25,6 +25,7 @@ def messages(folder):
 def inspect(folder,export=False):
     folder=Path(folder);counts=Counter();first=last=None;missing=[];duplicates=0
     previous_odom=None;writers={};files=[]
+    latest_transform=None;map_snapshot=None;map_transform=None
     def row(name,columns,values):
         if not export:return
         if name not in writers:
@@ -33,6 +34,12 @@ def inspect(folder,export=False):
         writers[name].writerow(values)
     try:
         for schema,channel,message,value in messages(folder):
+            # Latched context is not a received sample, but its transform still aligns the map.
+            if channel.topic in ('/tf','/tf_static'):
+                for transform in value.transforms:
+                    if transform.header.frame_id=='map' and transform.child_frame_id=='odom':
+                        q=transform.transform.rotation;p=transform.transform.translation
+                        latest_transform=[p.x,p.y,math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))]
             # Sequence zero is replay context (latched TF/calibration), not a received sample.
             if not message.sequence:continue
             seq=message.sequence
@@ -42,6 +49,8 @@ def inspect(folder,export=False):
                 elif seq>last+1:missing.append([last+1,seq-1])
             last=seq;counts[channel.topic]+=1
             stamp=message.log_time
+            if channel.topic=='/map' and value.header.frame_id=='map':
+                map_snapshot=value;map_transform=latest_transform
             if channel.topic=='/odom':
                 source=value.header.stamp.sec*10**9+value.header.stamp.nanosec
                 p,q=value.pose.pose.position,value.pose.pose.orientation
@@ -77,6 +86,17 @@ def inspect(folder,export=False):
             report.update(expected_received_samples=expected,observed_received_samples=sum(counts.values()))
             report['complete_received_stream'] &= expected==sum(counts.values())
     if export:atomic_json(folder/'validation.json',report)
+    if export and map_snapshot is not None:
+        from PIL import Image
+        grid=map_snapshot;origin=grid.info.origin;q=origin.orientation
+        pixels=bytes(225 if v<0 else 250 if v<=25 else 145 if v<65 else 42 for v in grid.data)
+        Image.frombytes('L',(grid.info.width,grid.info.height),pixels).transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(folder/'map.png')
+        metadata={'frame_id':'map','width':grid.info.width,'height':grid.info.height,'resolution':grid.info.resolution,
+                  'origin':[origin.position.x,origin.position.y,math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))],
+                  'source_stamp_ns':grid.header.stamp.sec*10**9+grid.header.stamp.nanosec,
+                  'odom_to_map':map_transform,'alignment_available':map_transform is not None,
+                  'trajectory_method':'Odometry projected through the transform accompanying the final recorded map; not an optimized SLAM trajectory.'}
+        atomic_json(folder/'map.json',metadata)
     return report
 
 

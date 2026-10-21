@@ -1,6 +1,6 @@
 /* Local dataset browser. No driving or recording-lifecycle requests. */
 const $ = (selector) => document.querySelector(selector);
-let catalog = [], selected = null, detail = null, playbackTimer = null, exportTimer = null;
+let catalog = [], selected = null, detail = null, playbackTimer = null, exportTimer = null, mapLayer = false, mapImage = null;
 const size = (n) => n > 1024 ** 3 ? (n / 1024 ** 3).toFixed(2) + ' GB' : (n / 1024 ** 2).toFixed(1) + ' MB';
 async function request(path, data) {
   const response = await fetch(path, {method: data ? 'POST' : 'GET', headers: {'X-Limo-Control':'1','Content-Type':'application/json'}, ...(data ? {body: JSON.stringify(data)} : {})});
@@ -29,7 +29,7 @@ function renderCatalog() {
 }
 async function choose(session,instance) {
   clearInterval(playbackTimer); playbackTimer=null; clearTimeout(exportTimer);
-  $('#recordedVideo').pause(); selected={session,instance}; renderCatalog();
+  $('#recordedVideo').pause(); selected={session,instance}; mapLayer=false;mapImage=null;renderCatalog();
   try {
     detail=await request('/local/data/detail?'+query()); $('#dataError').textContent='';
     $('#dataEmpty').hidden=true; $('#dataContent').hidden=false; renderDetail(); configurePlayback();
@@ -53,6 +53,11 @@ function renderDetail() {
   $('#dataFiles').replaceChildren(...detail.files.map(file=>{const row=node('li');const link=node('a',file.name);link.href='/local/data/file?'+query({file:file.name});link.download=file.name.split('/').pop();row.append(link,node('span',size(file.bytes)));return row;}));
   $('#dataEvents').replaceChildren(node('pre',detail.events.map(e=>e.event_json).join('\n') || t('Export CSV to inspect recorded events')));
   $('#trajectoryHint').textContent=detail.trajectory.length ? t('Plots are sampled for display; CSV and MCAP preserve the recorded samples.') : t('Export CSV to inspect trajectory and metrics');
+  $('#toggleMapLayer').disabled=!detail.map?.alignment_available;
+  $('#toggleMapLayer').textContent=t(mapLayer ? 'Hide map background' : 'Show map background');
+  $('#toggleMapLayer').setAttribute('aria-pressed',String(mapLayer));
+  $('#mapLayerHint').textContent=detail.map?.alignment_available ? t('Aligned using the map transform recorded with this instance.') : t('Export an instance containing a map and localization to enable this layer.');
+  if(detail.map && !mapImage) { mapImage=new Image();mapImage.onload=drawPlots;mapImage.src='/local/data/file?'+query({file:'map.png'}); }
   drawPlots();
 }
 function configurePlayback() {
@@ -74,11 +79,24 @@ $('#playFrames').onclick=()=>{
 function drawPlots() {
   const rows=detail.trajectory, c=$('#trajectoryPlot'),g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);g.fillStyle='#f6f9f8';g.fillRect(0,0,c.width,c.height);
   if (rows.length) {
-    const xs=rows.map(r=>r[1]),ys=rows.map(r=>r[2]),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
+    const map=mapLayer && detail.map?.alignment_available ? detail.map : null;
+    const tf=map?.odom_to_map;
+    const displayRows=rows.map(r=>tf ? [r[0],tf[0]+Math.cos(tf[2])*r[1]-Math.sin(tf[2])*r[2],tf[1]+Math.sin(tf[2])*r[1]+Math.cos(tf[2])*r[2]] : r);
+    const xs=displayRows.map(r=>r[1]),ys=displayRows.map(r=>r[2]);
+    if(map) {
+      for(const x of [0,map.width*map.resolution]) for(const y of [0,map.height*map.resolution]) {
+        xs.push(map.origin[0]+Math.cos(map.origin[2])*x-Math.sin(map.origin[2])*y);
+        ys.push(map.origin[1]+Math.sin(map.origin[2])*x+Math.cos(map.origin[2])*y);
+      }
+    }
+    const xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
     const scale=Math.min((c.width-100)/Math.max(.1,xmax-xmin),(c.height-100)/Math.max(.1,ymax-ymin));
     const point=r=>[c.width/2+(r[1]-(xmin+xmax)/2)*scale,c.height/2-(r[2]-(ymin+ymax)/2)*scale];
-    g.strokeStyle='#278673';g.lineWidth=3;g.beginPath();rows.forEach((r,i)=>{const p=point(r);i?g.lineTo(...p):g.moveTo(...p);});g.stroke();
-    for (const [r,color] of [[rows[0],'#647e7a'],[rows.at(-1),'#ce8c51']]) {g.fillStyle=color;g.beginPath();g.arc(...point(r),7,0,Math.PI*2);g.fill();}
+    if(map && mapImage?.complete && mapImage.naturalWidth) {
+      g.save();g.translate(...point([0,map.origin[0],map.origin[1]]));g.rotate(-map.origin[2]);g.scale(scale*map.resolution,scale*map.resolution);g.imageSmoothingEnabled=false;g.drawImage(mapImage,0,-map.height,map.width,map.height);g.restore();
+    }
+    g.strokeStyle='#278673';g.lineWidth=3;g.beginPath();displayRows.forEach((r,i)=>{const p=point(r);i?g.lineTo(...p):g.moveTo(...p);});g.stroke();
+    for (const [r,color] of [[displayRows[0],'#647e7a'],[displayRows.at(-1),'#ce8c51']]) {g.fillStyle=color;g.beginPath();g.arc(...point(r),7,0,Math.PI*2);g.fill();}
     g.fillStyle='#69817b';g.font='16px sans-serif';g.fillText(`X ${xmin.toFixed(2)} … ${xmax.toFixed(2)} m`,25,c.height-20);g.fillText(`Y ${ymin.toFixed(2)} … ${ymax.toFixed(2)} m`,25,25);
   }
   const chart=$('#speedPlot'),ctx=chart.getContext('2d');ctx.clearRect(0,0,chart.width,chart.height); if (!rows.length)return;
@@ -99,3 +117,5 @@ window.addEventListener('languagechange',()=>{renderCatalog();renderDetail();});
 
 $('#packageData').onclick=async()=>{try { detail.bundle=await request('/local/data/package',selected);renderDetail();pollExport(); }catch(error){fail(error);}};
 $('#openSourceFolder').onclick=()=>request('/local/data/open-folder',selected).catch(fail);
+
+$('#toggleMapLayer').onclick=()=>{mapLayer=!mapLayer;renderDetail();};

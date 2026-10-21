@@ -1,5 +1,10 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Show map background": "显示地图背景",
+  "Hide map background": "隐藏地图背景",
+  "Aligned using the map transform recorded with this instance.": "使用该实例记录的地图坐标变换对齐。",
+  "Export an instance containing a map and localization to enable this layer.": "导出包含地图和定位数据的实例后，可启用此图层。",
+
   "In-place rotation requires a clear sweep and zero linear velocity": "原地转向需要扫掠范围畅通且线速度为零",
   "Lidar-checked in-place rotation": "雷达校验后的原地转向",
 

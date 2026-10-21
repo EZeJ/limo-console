@@ -47,7 +47,7 @@ class Datasets:
             name=str(path.relative_to(root))
             try:self.file(session,instance,name)
             except ValueError:continue
-            if path.suffix in ('.csv','.json','.mp4','.mkv','.mcap') or name.endswith(('.mp4.partial','.mkv.partial','.csv.partial')):
+            if path.suffix in ('.csv','.json','.mp4','.mkv','.mcap') or name=='map.png' or name.endswith(('.mp4.partial','.mkv.partial','.csv.partial')):
                 files.append({'name':name,'bytes':path.stat().st_size})
             if path.name.endswith('.manifest.json') and path.parent.name=='sensors':
                 counts.update(json.loads(path.read_text()).get('counts',{}))
@@ -64,7 +64,11 @@ class Datasets:
         if (root/'events.csv').exists():
             with self.file(session,instance,'events.csv').open() as file:events=list(csv.DictReader(file))[-100:]
         frames=self.frame_table(session,instance)
+        map_info=None
+        if (root/'map.json').is_file() and (root/'map.png').is_file():
+            map_info=json.loads(self.file(session,instance,'map.json').read_text())
         return {'manifest':manifest,'files':files,'topics':dict(counts),'trajectory':trajectory,'events':events,
+                'map':map_info,
                 'source_directory':str(root),'bundle':self.bundles.get((session,instance),{'state':'not_bundled'}),
                 'frame_count':len(frames),'duration_s':float(frames[-1]['pts_us'])/1e6 if frames else 0,
                 'export':self.jobs.get((session,instance),{'state':'done' if odometry.exists() else 'not_exported'})}

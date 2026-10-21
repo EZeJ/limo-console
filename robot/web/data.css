@@ -6,3 +6,5 @@
 @media(max-width:1100px){.dataset-layout{grid-template-columns:240px minmax(0,1fr)}.dataset-visuals{grid-template-columns:1fr}.dataset-tables{grid-template-columns:1fr}}@media(max-width:700px){.dataset-layout{grid-template-columns:1fr}.dataset-catalog{position:static;max-height:300px}.dataset-heading{gap:15px}.dataset-heading h1{font-size:28px}.dataset-header{gap:15px;font-size:12px}.dataset-main{padding-top:25px}}
 
 .data-source,.data-package{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%;font-size:12px}.data-source code{overflow-wrap:anywhere;word-break:break-all;color:#628079}.data-package a{color:#267a6d}.data-package[hidden]{display:none}
+
+.plot-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.plot-heading button{font-size:11px;padding:7px 10px}.plot-heading h2{margin:0}.trajectory-panel #mapLayerHint{margin:10px 0}
