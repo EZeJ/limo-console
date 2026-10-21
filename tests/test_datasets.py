@@ -37,7 +37,7 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(result['frame_count'],4);self.assertEqual(result['topics'],{'/scan':12})
         self.assertEqual([s['time_offset_s'] for s in result['segments']],[0,10])
         self.assertEqual(result['segments'][1]['trajectory'][0][0],0)
-        self.assertEqual(result['source_directory'],str(self.folder.parent));self.assertTrue(result['closed'])
+        self.assertEqual(result['source_directory'],str(self.folder.parent.resolve()));self.assertTrue(result['closed'])
     def test_session_zip_preserves_boundaries_originals_and_configuration(self):
         second=self.add_segment();(self.folder/'camera.mp4').write_bytes(b'first');(second/'camera.mp4').write_bytes(b'second')
         (self.folder.parent/'configuration.json').write_text('{"version":1}')
