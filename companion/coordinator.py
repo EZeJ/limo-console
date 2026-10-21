@@ -37,6 +37,8 @@ class Coordinator:
 
     def start(self,profile=None):
         self.request('/stop',{})
+        try:configuration=self.request('/configuration')
+        except Exception as exc:configuration={'unavailable':str(exc)}
         self.profile=dict(profile or DEFAULT_PROFILE)
         camera=self.request('/capture/configure',self.profile,timeout=15)
         self.last_seq=camera['sequence']
@@ -45,6 +47,7 @@ class Coordinator:
                               'metadata':{'camera_profile':self.profile,'clock':'robot_monotonic_ns','version':1}},timeout=25)
         self.session=boundary['session_id'];self.active=True
         self._add_instance(boundary)
+        atomic_json(self.root/self.session/'configuration.json',configuration)
         self.warmup_started=time.monotonic()
         for name,fn in [('video-receiver',self.frame_loop),('recording-heartbeat',self.heartbeat_loop),('sensor-archive',self.archive_loop)]:
             thread=threading.Thread(target=fn,name=name,daemon=True);thread.start();self.threads.append(thread)

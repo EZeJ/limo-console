@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Loopback console gateway and computer recording companion."""
 import argparse
+from http.client import HTTPException
 import fcntl
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import json
@@ -66,7 +67,7 @@ def make_handler(gateway,port):
             request=Request(gateway.base+self.path,data=body,headers={'Host':'127.0.0.1:8765','X-Limo-Control':'1','Content-Type':'application/json'})
             try:response=urlopen(request,timeout=25)
             except HTTPError as exc:response=exc
-            except (URLError,TimeoutError) as exc:return self.answer({'error':'Robot connection unavailable: '+str(exc)},503)
+            except (URLError,OSError,HTTPException) as exc:return self.answer({'error':'Robot connection unavailable: '+str(exc)},503)
             with response:
                 if urlsplit(self.path).path=='/status' and response.status==200:
                     state=json.load(response);remote=state.get('recording',{});local=gateway.status()
@@ -86,7 +87,7 @@ def make_handler(gateway,port):
             path=urlsplit(self.path).path
             if path=='/local/recording/status':return self.answer(gateway.status())
             if path=='/local/instances':return self.answer({'instances':gateway.coordinator.instances})
-            if path=='/camera.jpg' and gateway.coordinator.latest_frame:
+            if path=='/camera.jpg' and gateway.coordinator.active and gateway.coordinator.latest_frame:
                 data,kind,meta=gateway.coordinator.latest_frame
                 if time.time_ns()-meta['receive_wall_ns']>2*10**9:return self.answer({'error':'Camera frame is stale'},503)
                 self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Loopback-only control API, reached over an SSH tunnel."""
 import json
+import hashlib
 import io
 import math
 from pathlib import Path
@@ -305,6 +306,12 @@ def main():
                 self.proxy('http://127.0.0.1:8767/frame')
             elif path == '/status':
                 self.reply('/status', {})
+            elif path == '/configuration':
+                files={}
+                for name in ('bringup.launch.py','lidar.yaml','slam.yaml','cartographer.lua','nav2_params.yaml','navigate.xml','scan_quality.py','safety.py'):
+                    value=Path('/control',name).read_bytes()
+                    files[name]={'sha256':hashlib.sha256(value).hexdigest(),'text':value.decode()}
+                self.bytes_reply(json.dumps({'version':1,'files':files}).encode(),'application/json')
             elif path == '/navigation':
                 with node.lock:
                     body = json.dumps(node.navigation.status()).encode()
