@@ -1,0 +1,71 @@
+--- a/limo_base/src/limo_driver.cpp
++++ b/limo_base/src/limo_driver.cpp
+@@ -83,6 +83,12 @@
+         keep_running_=true;
+         this->connect(port_name, B460800);
+         this->enableCommandedMode();
++        setMotionCommand(0, 0, 0, 0);
++        command_watchdog_ = this->create_wall_timer(std::chrono::milliseconds(50), [this]() {
++            if (std::chrono::steady_clock::now() - last_command_ > std::chrono::milliseconds(350)) {
++                setMotionCommand(0, 0, 0, 0);
++            }
++        });
+         RCLCPP_INFO(this->get_logger(),"Open the serial port:'%s'",port_name.c_str());
+         
+ 
+@@ -422,6 +428,7 @@
+ }
+ void LimoDriver::twistCmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
+ {
++    last_command_ = std::chrono::steady_clock::now();
+     switch (motion_mode_) {
+         case MODE_FOUR_DIFF: {
+             setMotionCommand(msg->linear.x, msg->angular.z, 0, 0);
+@@ -484,17 +491,15 @@
+     tf2::Quaternion q;
+     q.setRPY(0.0, 0.0, degToRad(imu_data_.yaw));
+ 
+-    if (flag==0)
++    if (!imu_initialized_)
+     {
+-        double present_theta_ =imu_data_.yaw;
+-        double last_theta_ = imu_data_.yaw;
+-        flag=1;    
++        last_theta_ = imu_data_.yaw;
++        imu_initialized_ = true;
+         
+     }
+     //ROS_INFO("flag:%d",flag);
+     present_theta_ = imu_data_.yaw;
+-    delta_theta_ = present_theta_ - last_theta_;
+-    if(delta_theta_< 0.1 && delta_theta_> -0.1) delta_theta_=0;
++    delta_theta_ = std::remainder(present_theta_ - last_theta_, 360.0);
+     real_theta_ = real_theta_ + delta_theta_;
+     last_theta_ = present_theta_;
+     //ROS_INFO("present_theta_:%f;delta_theta_:%f;real_theta_:%f;last_theta_:%f",present_theta_,delta_theta_,real_theta_,last_theta_);
+--- a/limo_base/include/limo_base/limo_driver.h
++++ b/limo_base/include/limo_base/limo_driver.h
+@@ -103,7 +103,11 @@
+ 
+     bool pub_odom_tf_ = false;
+     bool use_mcnamu_ = false;
+-    double present_theta_,last_theta_,delta_theta_,real_theta_,rad;
++    double present_theta_ = 0.0, last_theta_ = 0.0, delta_theta_ = 0.0;
++    double real_theta_ = 0.0, rad = 0.0;
++    bool imu_initialized_ = false;
++    std::chrono::steady_clock::time_point last_command_ = std::chrono::steady_clock::now();
++    rclcpp::TimerBase::SharedPtr command_watchdog_;
+     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
+     rclcpp::Publisher<limo_msgs::msg::LimoStatus>::SharedPtr status_publisher_;
+ 
+@@ -124,8 +128,8 @@
+     double position_y_ = 0.0;
+     double theta_ = 0.0;
+ 
+-    ImuData imu_data_;
+-    uint8_t motion_mode_;  // current motion type
++    ImuData imu_data_{};
++    uint8_t motion_mode_ = MODE_UNKNOWN;  // current motion type
+ 
+     static constexpr double max_inner_angle_ = 0.48869;  // 28 degree
+     static constexpr double track_ = 0.172;           // m (left right wheel distance)

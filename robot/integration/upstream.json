@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/agilexrobotics/limo_ros2/tree/humble",
+  "license": "BSD-3-Clause",
+  "files": {
+    "limo_base/src/limo_driver.cpp": "0b23bfbb368356f55150a9cbb1b2a80ae28ea925b979f3c5e9bd5a0b6b11d8ed",
+    "limo_base/include/limo_base/limo_driver.h": "e91293c548aca902924add9d251e565fc2f324c4e5f3a59194e639b9978bcd26"
+  }
+}
