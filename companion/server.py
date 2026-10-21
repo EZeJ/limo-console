@@ -25,30 +25,31 @@ class Gateway:
         self.coordinator=Coordinator(robot_url,self.data_dir)
         self.restart_lock=threading.Lock()
         self.start_error=''
-        self.initializing=True
-        threading.Thread(target=self.start,daemon=True).start()
+        self.initializing=False
+        self.finishing=False
 
     def start(self):
         with self.restart_lock:
+            if self.coordinator.active or self.finishing:return
             self.initializing=True
-            try:self.coordinator.start();self.start_error=''
+            profile=self.coordinator.pending_profile or self.coordinator.profile
+            self.coordinator=Coordinator(self.base,self.data_dir)
+            try:self.coordinator.start(profile);self.start_error=''
             except Exception as exc:self.start_error=str(exc);self.coordinator.fault(exc)
             finally:self.initializing=False
 
     def status(self):
         state=self.coordinator.status()
-        state.update(initializing=self.initializing)
+        state.update(initializing=self.initializing,finishing=self.finishing)
         if self.start_error:state['error']=self.start_error
         return state
 
-    def restart(self):
-        if self.initializing:return
-        self.initializing=True
-        def run():
-            self.coordinator.close()
-            self.coordinator=Coordinator(self.base,self.data_dir)
-            self.start()
-        threading.Thread(target=run,daemon=True).start()
+    def finish(self):
+        with self.restart_lock:
+            if self.finishing or self.initializing:return
+            self.finishing=True
+            try:self.coordinator.close(interrupted=False)
+            finally:self.finishing=False
 
 
 def make_handler(gateway,port):
@@ -87,7 +88,7 @@ def make_handler(gateway,port):
             if path=='/local/instances':return self.answer({'instances':gateway.coordinator.instances})
             if path=='/camera.jpg' and gateway.coordinator.latest_frame:
                 data,kind,meta=gateway.coordinator.latest_frame
-                if time.monotonic()-gateway.coordinator.last_frame>2:return self.answer({'error':'Camera frame is stale'},503)
+                if time.time_ns()-meta['receive_wall_ns']>2*10**9:return self.answer({'error':'Camera frame is stale'},503)
                 self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers()
                 try:self.wfile.write(data)
                 except (BrokenPipeError,ConnectionResetError):pass
@@ -101,15 +102,18 @@ def make_handler(gateway,port):
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<=length<=16384:raise ValueError('Request too large')
                 body=self.rfile.read(length);data=json.loads(body or b'{}')
+                if self.path=='/local/recording/start':
+                    threading.Thread(target=gateway.start,daemon=True).start()
+                    return self.answer({'accepted':True},202)
                 if self.path=='/local/recording/next':return self.answer(gateway.coordinator.next(data['request_id'],data.get('name','')))
                 if self.path=='/local/recording/profile':return self.answer(gateway.coordinator.stage_profile(data))
-                if self.path=='/local/recording/retry':gateway.restart();return self.answer({'accepted':True},202)
+                if self.path=='/local/recording/retry':return self.answer(gateway.coordinator.retry())
                 if self.path=='/local/recording/open-folder':
                     command=['open',str(gateway.data_dir)] if sys.platform=='darwin' else ['xdg-open',str(gateway.data_dir)]
                     subprocess.Popen(command,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     return self.answer({'opened':str(gateway.data_dir)})
                 if self.path=='/local/recording/finish':
-                    threading.Thread(target=gateway.coordinator.close,daemon=True).start()
+                    threading.Thread(target=gateway.finish,daemon=True).start()
                     return self.answer({'accepted':True},202)
                 if self.path.startswith('/local/'):return self.answer({'error':'Unknown local endpoint'},404)
                 self.proxy(body)

@@ -140,10 +140,13 @@
               <strong id="instanceLabel">—</strong
               ><span id="recordingMetrics"></span>
             </div>
-            <button id="nextInstance" class="primary" disabled>
+            <button id="startRecording" class="primary" data-i18n="Start recording">Start recording</button>
+            <button id="nextInstance" class="secondary" disabled>
               <span data-i18n="Next instance">Next instance</span><kbd>N</kbd>
             </button>
+            <button id="finishRecording" class="danger-outline" data-i18n="End recording" disabled>End recording</button>
           </div>
+          <p class="setting-note" data-i18n="Stopping the robot keeps recording. Only End recording closes the session.">Stopping the robot keeps recording. Only End recording closes the session.</p>
           <div class="recording-path">
             <span data-i18n="Saved on this computer"
               >Saved on this computer</span
@@ -216,14 +219,7 @@
                 class="secondary"
                 data-i18n="Retry recording"
               >
-                Retry recording</button
-              ><button
-                id="finishRecording"
-                class="danger-outline"
-                data-i18n="Stop & finish recording"
-              >
-                Stop &amp; finish recording
-              </button>
+                Retry recording</button>
             </div>
             <ol id="instanceList"></ol>
           </details>

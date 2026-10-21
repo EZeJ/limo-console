@@ -30,13 +30,15 @@ class Coordinator:
         self.halt=threading.Event();self.threads=[];self.active=False;self.switching=False
         self.last_archive_poll=0.;self.sensor_status={};self.operation={}
         self.warmup_started=time.monotonic();self.warmup_count=0
+        self.incidents=[]
 
     def request(self,path,data=None,timeout=8):return json_request(self.base,path,data,timeout)
 
     def start(self,profile=None):
         self.request('/stop',{})
         self.profile=dict(profile or DEFAULT_PROFILE)
-        self.request('/capture/configure',self.profile,timeout=15)
+        camera=self.request('/capture/configure',self.profile,timeout=15)
+        self.last_seq=camera['sequence']
         if shutil.disk_usage(self.root).free<self.reserve:raise ValueError('Computer recording storage is full')
         boundary=self.request('/recording/start',{'request_id':uuid.uuid4().hex,'owner':self.owner,
                               'metadata':{'camera_profile':self.profile,'clock':'robot_monotonic_ns','version':1}},timeout=25)
@@ -50,7 +52,7 @@ class Coordinator:
     def _add_instance(self,boundary):
         folder=self.root/checked(boundary['session_id'])/checked(boundary['instance_id'])
         folder.mkdir(parents=True,exist_ok=True)
-        item=dict(boundary,camera_profile=dict(self.profile),status='recording',path=str(folder))
+        item=dict(boundary,camera_profile=dict(self.profile),status='recording',path=str(folder),incidents=[])
         self.instances.append(item)
         self.writers[item['instance_id']]=VideoWriter(folder,self.profile)
         self._persist(item)
@@ -78,12 +80,27 @@ class Coordinator:
         with self.lock:
             if self.error:return
             self.error=str(reason)
+            incident={'reason':self.error,'detected_wall_ns':time.time_ns()}
+            self.incidents.append(incident)
+            if self.instances:self.instances[-1]['incidents'].append(incident)
         try:self.request('/stop',{},timeout=2)
         except Exception:pass
 
+    def retry(self):
+        """Acknowledge a fault without ending the user's session or re-arming."""
+        if not self.active:raise ValueError('Start recording first')
+        self.request('/stop',{})
+        self.request('/capture/status')
+        if self.request('/recording/status').get('error'):
+            raise ValueError('Robot recorder needs recovery; keep existing data and end this recording explicitly')
+        if shutil.disk_usage(self.root).free<self.reserve:raise ValueError('Computer recording storage is full')
+        with self.lock:
+            self.error='';self.warmup_started=time.monotonic();self.warmup_count=self.frame_count
+        return self.status()
+
     def next(self,request_id,name=''):
         with self.lock:
-            if not self.active or self.error:raise ValueError('Recording is not ready')
+            if not self.active:raise ValueError('Start recording first')
             if self.operation.get('request_id')==request_id:return self.operation['result']
             if self.pending_profile:
                 robot=self.request('/status')
@@ -92,8 +109,8 @@ class Coordinator:
             boundary=self.request('/recording/next',{'request_id':request_id,'owner':self.owner,'name':name},timeout=25)
             old=self.instances[-1];old['end_monotonic_ns']=boundary['monotonic_ns'];old['status']='closing';self._persist(old)
             if self.pending_profile:
-                self.request('/capture/configure',self.pending_profile,timeout=15)
-                self.profile=self.pending_profile;self.pending_profile=None;self.last_seq=-1
+                camera=self.request('/capture/configure',self.pending_profile,timeout=15)
+                self.profile=self.pending_profile;self.pending_profile=None;self.last_seq=camera['sequence']
             self._add_instance(boundary)
             if self.switching:self.warmup_started=time.monotonic();self.warmup_count=self.frame_count
             self.switching=False
@@ -122,10 +139,9 @@ class Coordinator:
                     self.boot=meta['boot_id']
                     if self.last_seq>=0 and meta['sequence']!=self.last_seq+1:
                         self.gaps+=max(0,meta['sequence']-self.last_seq-1)
-                        raise ValueError('Camera frames were lost; driving is locked')
+                        self.fault('Camera frames were lost; driving is locked')
                     self.last_seq=meta['sequence']
                     self.latest_frame=(data,kind,meta)
-                    if self.error:continue
                     target=next((item for item in reversed(self.instances) if item['monotonic_ns']<=meta['monotonic_ns']),None)
                     if not target:continue
                     writer=self.writers[target['instance_id']]
@@ -177,7 +193,9 @@ class Coordinator:
                 if not self.halt.is_set():self.fault('Data archival failed: '+str(exc))
             self.halt.wait(1.)
 
-    def close(self):
+    def close(self,interrupted=True):
+        if not self.active:return
+        if interrupted:self.fault('Recording companion shut down unexpectedly')
         self.active=False
         try:self.request('/stop',{})
         except Exception:pass

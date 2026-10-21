@@ -30,7 +30,7 @@ assert.equal(
   "Turning speed must be between 0 and 2.00 rad/s.",
 );
 const html = fs.readFileSync(path.join(web, "index.html"), "utf8");
-const app = fs.readFileSync(path.join(web, "app.js"), "utf8");
+const app = ["app.js", "recording.js"].map(name => fs.readFileSync(path.join(web, name), "utf8")).join("\n");
 const keys = [
   ...html.matchAll(/data-i18n(?:-aria|-alt|-placeholder)?="([^"]+)"/g),
 ].map((m) => m[1]);

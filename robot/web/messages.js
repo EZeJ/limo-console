@@ -1,5 +1,14 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Start recording": "开始录制",
+  "End recording": "结束录制",
+  "Recording": "正在录制",
+  "Not recording": "尚未录制",
+  "Finishing recording…": "正在完成归档…",
+  "Stopping the robot keeps recording. Only End recording closes the session.": "停车不会中断录制。点击「结束录制」才会关闭本次记录。",
+  "Start recording first": "请先开始录制",
+  "Recording companion shut down unexpectedly": "电脑录制服务已退出，记录标记为中断",
+  "Robot recorder needs recovery; keep existing data and end this recording explicitly": "车端录制需要恢复；数据已保留，请手动结束本次录制后重试",
   "Stationary maintenance mode; driving is locked": "静止维护模式：驾驶已锁定",
   Stopped: "已停止",
   "Navigation stopped.": "导航已停止。",

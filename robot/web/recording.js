@@ -12,13 +12,15 @@ window.renderRecording = (r, demo = false) => {
   $("#recordingState").textContent = t(
     demo
       ? "Preview only"
+      : r?.finishing
+        ? "Finishing recording…"
       : r?.ready
-        ? "Recording automatically"
+        ? "Recording"
         : r?.initializing
           ? "Preparing recording…"
           : r?.error
             ? "Recording error · driving locked"
-            : "Recording not ready",
+            : r?.active ? "Preparing recording…" : "Not recording",
   );
   $("#recordingState").classList.toggle("error", !demo && !r?.ready);
   $("#instanceLabel").textContent = r?.instance_id || "—";
@@ -31,7 +33,10 @@ window.renderRecording = (r, demo = false) => {
   $("#recordingPath").textContent =
     r?.saved_directory ||
     t("Connect using scripts/connect.sh to save on this computer");
-  $("#nextInstance").disabled = nextBusy || !r?.ready || demo;
+  $("#startRecording").disabled = demo || !r?.saved_directory || r?.active || r?.initializing || r?.finishing;
+  $("#finishRecording").disabled = demo || !r?.active || r?.finishing;
+  $("#nextInstance").disabled = nextBusy || !r?.active || r?.finishing || demo;
+  $("#retryRecording").disabled = !r?.active || !r?.error;
   $("#openRecordingFolder").disabled = !r?.saved_directory;
   if (performance.now() > recordingErrorUntil)
     $("#recordingError").textContent = t(r?.error || "");
@@ -53,7 +58,7 @@ function recordingFailure(error) {
   recordingErrorUntil = performance.now() + 8000;
 }
 window.nextRecordingInstance = async () => {
-  if (nextBusy || !recordingView?.ready) return;
+  if (nextBusy || !recordingView?.active) return;
   nextBusy = true;
   try {
     await api("/local/recording/next", {
@@ -70,6 +75,7 @@ window.nextRecordingInstance = async () => {
   }
 };
 $("#nextInstance").onclick = window.nextRecordingInstance;
+$("#startRecording").onclick = () => api("/local/recording/start", {}).catch(recordingFailure);
 $("#openRecordingFolder").onclick = () =>
   api("/local/recording/open-folder", {}).catch(recordingFailure);
 $("#retryRecording").onclick = () => {
