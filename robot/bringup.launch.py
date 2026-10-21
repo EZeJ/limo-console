@@ -3,7 +3,6 @@ from launch_ros.actions import Node
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lidar_control import LidarControl
 
 
 def generate_launch_description():
@@ -14,7 +13,7 @@ def generate_launch_description():
              remappings=[('cmd_vel', '/limo/cmd_vel')], output='screen'),
         Node(package='ydlidar_ros2_driver', executable='ydlidar_ros2_driver_node',
              name='ydlidar_ros2_driver_node', parameters=['/control/lidar.yaml',
-                 {'start_paused': LidarControl.read_paused('/control/lidar-state.json')}], output='screen'),
+                 {'start_paused': False}], output='screen'),
         Node(package='tf2_ros', executable='static_transform_publisher', name='laser_tf',
              arguments=['--x', '0.103', '--z', '-0.034', '--frame-id', 'base_link', '--child-frame-id', 'laser_frame']),
         Node(package='tf2_ros', executable='static_transform_publisher', name='imu_tf',

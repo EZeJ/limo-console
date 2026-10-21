@@ -7,9 +7,7 @@ let mapBusy = false,
   savedMapRequest = false,
   speedBusy = false,
   speedInitialized = false;
-let lidarBusy = false,
-  lidarMessage = "",
-  lidarMessageUntil = 0;
+
 let armed = false,
   connected = false,
   holding = new Set(),
@@ -46,7 +44,13 @@ async function api(path, data, keepalive = false) {
     cache: "no-store",
     signal: keepalive
       ? undefined
-      : AbortSignal.timeout(["/maps", "/manual/speed"].includes(path) ? 5000 : 700),
+      : AbortSignal.timeout(
+          path.startsWith("/local/")
+            ? 30000
+            : ["/maps", "/manual/speed"].includes(path)
+              ? 5000
+              : 700,
+        ),
     keepalive,
   };
   if (data !== undefined)
@@ -89,6 +93,7 @@ function render(s) {
   connected = true;
   $("#demoBanner").hidden = !s.demo;
   renderLidarState(s);
+  if (window.renderRecording) window.renderRecording(s.recording, s.demo);
   renderMapping(s);
   renderManualSpeed(s);
   if (navMission && (!s.navigation || s.navigation.mission_id !== navMission))
@@ -103,8 +108,7 @@ function render(s) {
   $("#arm").disabled =
     speedBusy ||
     mapBusy ||
-    lidarBusy ||
-    !!s.lidar?.busy ||
+    (!s.demo && !s.recording?.ready) ||
     !!(s.navigation && s.navigation.preparing) ||
     exploreRequested ||
     !!navMission ||
@@ -122,8 +126,7 @@ function render(s) {
         !videoFresh ||
         speedBusy ||
         mapBusy ||
-        lidarBusy ||
-        !!s.lidar?.busy),
+        (!s.demo && !s.recording?.ready)),
   );
   $("#battery").textContent = Number(s.chassis.battery_voltage || 0).toFixed(1);
   $("#speed").textContent = Number(s.odometry.linear || 0).toFixed(2);
@@ -151,11 +154,7 @@ function render(s) {
   $("#sensors").textContent = t("Camera {0} · Chassis {1} · Lidar {2}", [
     s.camera_online ? t("online") : t("offline"),
     s.chassis_online ? t("online") : t("offline"),
-    s.lidar?.state === "paused"
-      ? t("scan paused")
-      : s.lidar_online
-        ? t("Scanning")
-        : t("offline"),
+    s.lidar_online ? t("Scanning") : t("offline"),
   ]);
 }
 $("#arm").onclick = async () => {
@@ -208,6 +207,11 @@ buttons.forEach((b) => {
     e.preventDefault();
     b.setPointerCapture(e.pointerId);
     press(b.dataset.dir);
+    api("/events", {
+      type: "pointer",
+      direction: b.dataset.dir,
+      phase: "down",
+    }).catch(() => {});
   };
   b.onpointerup = () => release(b.dataset.dir);
   b.onpointercancel = () => release(b.dataset.dir);
@@ -220,13 +224,27 @@ document.onkeydown = (e) => {
     return;
   }
   if (e.target.closest("input,select,textarea,[contenteditable=true]")) return;
+  if (e.key.toLowerCase() === "n" && !e.repeat) {
+    e.preventDefault();
+    window.nextRecordingInstance?.();
+    return;
+  }
   const d = keyDirs[e.key] || keyDirs[e.key.toLowerCase()];
   if (d) {
     e.preventDefault();
     press(d);
+    if (!e.repeat)
+      api("/events", { type: "keyboard", direction: d, phase: "down" }).catch(
+        () => {},
+      );
   }
 };
 document.onkeyup = (e) => {
+  if (e.key.toLowerCase() === "n" && !e.repeat) {
+    e.preventDefault();
+    window.nextRecordingInstance?.();
+    return;
+  }
   const d = keyDirs[e.key] || keyDirs[e.key.toLowerCase()];
   if (d) {
     e.preventDefault();
@@ -263,8 +281,7 @@ async function tick() {
     stopped(e.message);
     $("#dot").classList.remove("live");
     $("#connection").textContent = t("Disconnected");
-    $("#pauseLidar").disabled = true;
-    $("#resumeLidar").disabled = true;
+
     $("#lidarState").textContent = t("Connection lost");
     $("#driveReadiness").textContent = t("Check the robot connection");
     $("#arm").disabled = true;
@@ -277,6 +294,14 @@ async function tick() {
 const camera = $("#camera");
 camera.onload = () => {
   lastFrame = performance.now();
+  if (camera.naturalWidth) {
+    $(".feed").style.setProperty(
+      "--camera-aspect",
+      camera.naturalWidth + " / " + camera.naturalHeight,
+    );
+    $("#cameraResolution").textContent =
+      "RGB · " + camera.naturalWidth + " × " + camera.naturalHeight;
+  }
   $("#cameraOffline").hidden = true;
   setTimeout(loadFrame, 150);
 };
@@ -337,9 +362,7 @@ function drawLidar(scan) {
   g.fillText(t("FORWARD"), cx, 32);
   $("#lidarInfo").textContent = scan.online
     ? t("{0} points · 1 m rings · 3 m range", [scan.points.length])
-    : state?.lidar?.requested_paused
-      ? t("Scan paused")
-      : t("No scan data");
+    : t("No scan data");
 }
 async function lidarLoop() {
   try {
@@ -503,8 +526,7 @@ function renderNav(n) {
       state.chassis.vehicle_state === 0 &&
       state.chassis.control_mode === 1 &&
       !state.chassis.error_code;
-  const lidarReady =
-    state?.lidar?.state === "running" && !state?.lidar?.busy && !lidarBusy;
+  const lidarReady = state?.lidar_online;
   $("#applyMapping").disabled =
     !lidarReady ||
     navBusy ||
@@ -703,7 +725,7 @@ $("#returnHome").onclick = () =>
 $("#navStop").onclick = stop;
 $("#navMap").onclick = (e) => {
   if (!$("#enableMapGoals").checked) return;
-  if (state?.lidar?.state !== "running") {
+  if (!state?.lidar_online) {
     navFailure(Error(t("Resume lidar scanning before using navigation.")));
     return;
   }
@@ -756,98 +778,21 @@ async function navigationLoop() {
 navigationLoop();
 
 function renderLidarState(s) {
-  const l = s.lidar || {},
-    switching = lidarBusy || l.busy;
-  const names = {
-    waiting: t("Connecting"),
-    running: t("Scanning"),
-    pausing: t("Pausing"),
-    paused: t("Scan paused"),
-    starting: t("Resuming"),
-    offline: t("offline"),
-    error: t("Retry needed"),
-  };
-  const tag = $("#lidarState");
-  tag.textContent = names[l.state] || t("Reading");
-  tag.className =
-    "device-tag " +
-    (l.state === "paused" ? "paused" : l.state === "error" ? "error" : "");
-  $(".device-bar").dataset.state = l.state || "waiting";
-  $("#lidarDetail").textContent =
-    l.state === "paused"
-      ? t("Scan data paused. This does not stop the lidar motor.")
-      : t(l.message) || t("Reading lidar status…");
-  $("#pauseLidar").hidden = l.state === "paused";
-  $("#resumeLidar").hidden =
-    l.state !== "paused" && l.state !== "offline" && l.state !== "error";
-  $("#pauseLidar").disabled =
-    switching || !l.available || !!s.navigation?.preparing;
-  $("#resumeLidar").disabled =
-    switching || !l.available || !!s.navigation?.preparing;
-  $("#pauseLidar").textContent =
-    l.state === "pausing"
-      ? t("Pausing…")
-      : l.state === "error"
-        ? t("Retry pause")
-        : t("Pause scan data");
-  $("#resumeLidar").textContent =
-    l.state === "starting" ? t("Resuming…") : t("Resume scan data");
-  for (const id of ["#pauseLidar", "#resumeLidar"])
-    $(id).setAttribute("aria-busy", String(!!switching));
-  $("#lidarFeedback").textContent =
-    performance.now() < lidarMessageUntil
-      ? t(lidarMessage)
-      : switching
-        ? t("Robot stopped while changing lidar state.")
-        : l.state === "paused"
-          ? t("Camera-guided manual driving is available.")
-          : "";
+  const online = !!s.lidar_online;
+  $("#lidarState").textContent = t(online ? "Scanning" : "offline");
+  $("#lidarDetail").textContent = t(
+    online ? "Lidar is scanning" : "No scan data",
+  );
   $("#driveReadiness").textContent = !s.chassis_online
     ? t("Chassis offline. Check the connection.")
-    : s.chassis.vehicle_state !== 0
-      ? t("Chassis paused. Release the robot's physical pause button.")
-      : s.chassis.control_mode !== 1
-        ? t("Chassis is not in command control mode.")
-        : s.chassis.error_code
-          ? t("Chassis fault. Driving is unavailable.")
-          : !s.camera_online
-            ? t("Wait for the camera to reconnect.")
-            : switching
-              ? t("Wait for the lidar state change to finish.")
-              : l.state === "paused"
-                ? t(
-                    "Scan data paused. Camera-guided manual driving remains available.",
-                  )
-                : t("Camera and chassis ready. You can enable driving.");
+    : !s.camera_online
+      ? t("Wait for the camera to reconnect.")
+      : !s.demo && !s.recording?.ready
+        ? t("Computer recording is not ready; driving is locked")
+        : s.chassis.vehicle_state !== 0
+          ? t("Chassis paused. Release the robot's physical pause button.")
+          : t("Camera and chassis ready. You can enable driving.");
 }
-async function changeLidar(paused) {
-  if (lidarBusy || state?.lidar?.busy) return;
-  lidarBusy = true;
-  generation++;
-  armed = false;
-  navMission = null;
-  exploreRequested = false;
-  clearHold();
-  stopped(t("Stopped. Changing lidar state."));
-  $("#pauseLidar").disabled = true;
-  $("#resumeLidar").disabled = true;
-  $("#arm").disabled = true;
-  try {
-    const s = await api(paused ? "/lidar/pause" : "/lidar/resume", {});
-    render(s);
-    lidarMessage = t("Command sent. Verifying device state.");
-  } catch (e) {
-    lidarMessage = e.message;
-    $("#status").textContent = e.message;
-    $("#status").classList.add("error");
-  } finally {
-    lidarMessageUntil = performance.now() + 4000;
-    lidarBusy = false;
-    tick();
-  }
-}
-$("#pauseLidar").onclick = () => changeLidar(true);
-$("#resumeLidar").onclick = () => changeLidar(false);
 
 function renderManualSpeed(s) {
   const limits = s.manual_speed;

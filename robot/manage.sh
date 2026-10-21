@@ -30,6 +30,8 @@ except Exception as e:
 PY
 }
 base() {
+    run recorder python3 /control/recorder_service.py
+    run capture python3 /control/camera_service.py
     run guard python3 /control/control_server.py
     run base ros2 launch /control/bringup.launch.py
 }
@@ -124,7 +126,7 @@ case "${1:-status}" in
   stop) stop_motion ;;
   shutdown)
     stop_motion
-    for s in navigation mapping base guard rviz web vnc wm display; do halt "$s"; done
+    for s in navigation mapping guard recorder capture base rviz web vnc wm display; do halt "$s"; done
     ;;
   status) tmux list-sessions ;;
   *) echo 'Commands: start desktop map explore save NAME navigate NAME stop shutdown status'; exit 1 ;;

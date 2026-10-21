@@ -15,9 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt -r requirements-companion.txt
       - run: python -m unittest discover -s tests -v
       - run: node tests/test_i18n.js
-      - run: node --check robot/web/app.js && node --check robot/web/i18n.js
-      - run: python -m compileall -q robot scripts
-      - run: bash -n scripts/install.sh scripts/tunnel.sh robot/manage.sh robot/env.sh
+      - run: node --check robot/web/app.js && node --check robot/web/i18n.js && node --check robot/web/recording.js
+      - run: python -m compileall -q robot scripts companion
+      - run: bash -n scripts/install.sh scripts/tunnel.sh scripts/connect.sh robot/manage.sh robot/env.sh

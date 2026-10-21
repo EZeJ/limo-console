@@ -9,6 +9,8 @@ import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 from PIL import Image as PILImage
 
 import rclpy
@@ -19,17 +21,17 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, Image
 from limo_msgs.msg import LimoStatus
 from action_msgs.srv import CancelGoal
-from std_srvs.srv import Empty
+from std_msgs.msg import String
 from safety import Gate
 from navigation import Navigation
-from lidar_control import LidarControl
+from lidar_health import LidarHealth
 from mapping_control import MappingControl, export_map
 from speed_settings import load_limits, save_limits, RATED_MAX, ANGULAR_MAX
 
 
 class Control(Node):
     def __init__(self):
-        super().__init__('mac_control_guard')
+        super().__init__('limo_console_guard')
         self.lock = threading.RLock()
         self.speed_settings_path = Path('/control/manual-speed.json')
         self.gate = Gate(**load_limits(self.speed_settings_path))
@@ -46,8 +48,13 @@ class Control(Node):
         self.pub = self.create_publisher(Twist, '/limo/cmd_vel', 1)
         self.cancel = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
         self.cancel_follow = self.create_client(CancelGoal, '/follow_path/_action/cancel_goal')
-        self.lidar = LidarControl(self.create_client(Empty, '/start_scan'),
-                                  self.create_client(Empty, '/stop_scan'), Empty.Request)
+        self.lidar = LidarHealth()
+        self.recording = {'ready': False, 'active': False}
+        self.last_recording = float('-inf')
+        self.event_sequence = 0
+        self.event_pub = self.create_publisher(String, '/console/events', 100)
+        self.tick_pub = self.create_publisher(String, '/console/control_tick', 100)
+        self.create_subscription(String, '/console/recording_health', self.on_recording_health, 10)
         self.navigation = Navigation(self)
         self.mapping = MappingControl(self.navigation, self.lock)
         self.create_subscription(LimoStatus, '/limo_status', self.on_status, 10)
@@ -70,15 +77,33 @@ class Control(Node):
 
     def on_camera(self, msg):
         self.last_camera = time.monotonic()
-        if self.last_camera - self.last_jpeg < 0.15:
-            return
-        if msg.encoding in ('rgb8', 'bgr8'):
-            frame = PILImage.frombytes('RGB', (msg.width, msg.height), bytes(msg.data),
-                                      'raw', 'RGB' if msg.encoding == 'rgb8' else 'BGR', msg.step)
-            output = io.BytesIO()
-            frame.save(output, format='JPEG', quality=70)
-            self.jpeg = output.getvalue()
-            self.last_jpeg = self.last_camera
+
+    def on_recording_health(self, msg):
+        try:
+            status = json.loads(msg.data)
+            if not isinstance(status, dict): return
+            with self.lock:
+                self.recording = status
+                self.last_recording = time.monotonic()
+        except (ValueError, TypeError): pass
+
+    def recording_problem(self):
+        if time.monotonic()-self.last_recording > .75:
+            return 'Recording service is unavailable; driving is locked'
+        if not self.recording.get('ready'):
+            return self.recording.get('error') or 'Computer recording is not ready; driving is locked'
+        return ''
+
+    def require_recording(self):
+        reason = self.recording_problem()
+        if reason: raise ValueError(reason)
+
+    def log_event(self, name, data):
+        self.event_sequence += 1
+        event = String()
+        event.data = json.dumps(dict(sequence=self.event_sequence, event=name, data=data,
+                                    monotonic_ns=time.monotonic_ns(), wall_ns=time.time_ns()), allow_nan=False)
+        self.event_pub.publish(event)
 
     def on_scan(self, msg):
         with self.lock:
@@ -115,11 +140,22 @@ class Control(Node):
         with self.lock:
             now = time.monotonic()
             self.lidar.tick(now-self.last_scan)
+            recording_problem = self.recording_problem()
+            if recording_problem and self.gate.mode != 'stopped':
+                self.navigation.stop(recording_problem)
+                self.gate.stop()
             self.navigation.tick()
             self.output, self.reason = self.gate.output(now, now-self.last_status, now-self.last_scan, *self.clearance, self.status.get('error_code', 0), self.status.get('motion_mode', -1), camera_age=now-self.last_camera, vehicle_state=self.status.get('vehicle_state', -1), control_mode=self.status.get('control_mode', -1))
             msg = Twist()
             msg.linear.x, msg.angular.z = self.output
             self.pub.publish(msg)
+            audit = String()
+            audit.data = json.dumps(dict(monotonic_ns=time.monotonic_ns(), wall_ns=time.time_ns(),
+                                        mode=self.gate.mode, requested=self.gate.command, output=self.output,
+                                        reason=self.reason, limits=self.gate.manual_limits, odometry=self.odom,
+                                        recording_ready=not bool(recording_problem)), allow_nan=False)
+            self.tick_pub.publish(audit)
+            if recording_problem and self.gate.mode == 'stopped': self.reason = recording_problem
 
     def stop_motion(self):
         self.navigation.stop()
@@ -132,6 +168,10 @@ class Control(Node):
     def request(self, path, data):
         with self.lock:
             now = time.monotonic()
+            if path not in ('/status', '/heartbeat'):
+                self.log_event('request', {'path':path, 'arguments':data})
+            if path in ('/arm', '/drive', '/navigation/goal', '/navigation/explore', '/navigation/return'):
+                self.require_recording()
             if path in ('/navigation/prepare', '/navigation/goal', '/navigation/explore', '/navigation/return'):
                 self.lidar.require_scanning()
             if path == '/mapping/start':
@@ -146,15 +186,7 @@ class Control(Node):
             elif path in ('/mapping/start', '/mapping/save', '/mapping/stop'):
                 self.stop_motion()
                 self.mapping.request(path.rsplit('/', 1)[-1], data.get('name'), data.get('backend'))
-            elif path in ('/lidar/pause', '/lidar/resume'):
-                self.stop_motion()
-                if self.navigation.preparing:
-                    raise ValueError('Wait for mapping startup to finish before changing lidar state.')
-                self.lidar.request(path == '/lidar/pause')
-                self.lidar.tick(now-self.last_scan)
             elif path == '/arm':
-                if self.lidar.busy:
-                    raise ValueError('Wait for the lidar state change before enabling driving.')
                 if data.get('mode') == 'navigation':
                     self.lidar.require_scanning()
                 if self.navigation.preparing:
@@ -199,6 +231,7 @@ class Control(Node):
             elif path != '/status':
                 raise ValueError('Unknown endpoint')
             return dict(mode=self.gate.mode, reason=self.reason, chassis=self.status,
+                        recording=dict(self.recording, ready=not bool(self.recording_problem())),
                         manual_speed=dict(self.gate.manual_limits, rated_max=RATED_MAX, angular_max=ANGULAR_MAX),
                         odometry=self.odom, output=self.output,
                         front_clearance=self.clearance[0], rear_clearance=self.clearance[1],
@@ -229,21 +262,37 @@ def main():
             self.end_headers()
             self.wfile.write(body)
 
+        def proxy(self, target, data=None):
+            request = Request(target, data=data, headers={'X-Limo-Control':'1', 'Content-Type':'application/json'})
+            try: response = urlopen(request, timeout=25 if data is not None else 5)
+            except HTTPError as exc: response = exc
+            except (URLError, TimeoutError) as exc:
+                self.bad_request('Robot service unavailable: '+str(exc)); return
+            with response:
+                self.send_response(response.status)
+                for name in ('Content-Type','Content-Length','X-Limo-Frame'):
+                    if response.headers.get(name): self.send_header(name,response.headers[name])
+                self.send_header('Cache-Control','no-store');self.end_headers()
+                try:
+                    for block in iter(lambda:response.read(256*1024),b''):self.wfile.write(block)
+                except (BrokenPipeError,ConnectionResetError):pass
+
         def do_GET(self):
             if not self.valid_host():
                 self.send_error(403)
                 return
             path = urlsplit(self.path).path
+            if path.startswith('/recording/'):
+                return self.proxy('http://127.0.0.1:8766'+self.path[len('/recording'):])
+            if path.startswith('/capture/'):
+                return self.proxy('http://127.0.0.1:8767'+self.path[len('/capture'):])
             if path == '/':
                 self.bytes_reply(Path('/control/web/index.html').read_bytes(), 'text/html; charset=utf-8')
-            elif path in ('/app.js', '/messages.js', '/i18n.js', '/style.css'):
+            elif path in ('/app.js', '/messages.js', '/i18n.js', '/recording.js', '/style.css'):
                 kind = 'application/javascript' if path.endswith('.js') else 'text/css'
                 self.bytes_reply(Path('/control/web'+path).read_bytes(), kind+'; charset=utf-8')
             elif path == '/camera.jpg':
-                if node.jpeg is None or time.monotonic()-node.last_camera > 2:
-                    self.send_error(503, 'Camera offline')
-                else:
-                    self.bytes_reply(node.jpeg, 'image/jpeg')
+                self.proxy('http://127.0.0.1:8767/frame')
             elif path == '/status':
                 self.reply('/status', {})
             elif path == '/navigation':
@@ -295,9 +344,20 @@ def main():
                 return
             try:
                 size = int(self.headers.get('Content-Length', '0'))
-                if not 0 <= size <= 1024:
+                if not 0 <= size <= 16384:
                     raise ValueError('Request too large')
                 data = json.loads(self.rfile.read(size) or b'{}')
+                if self.path in ('/lidar/pause','/lidar/resume'):
+                    self.send_error(410,'Lidar control has been removed');return
+                if self.path.startswith('/recording/'):
+                    if self.path == '/recording/finish': node.request('/stop', {})
+                    return self.proxy('http://127.0.0.1:8766'+self.path[len('/recording'):], json.dumps(data).encode())
+                if self.path == '/capture/configure':
+                    node.request('/stop', {})
+                    return self.proxy('http://127.0.0.1:8767/configure',json.dumps(data).encode())
+                if self.path == '/events':
+                    with node.lock: node.log_event('operator',data)
+                    return self.reply('/status',{})
                 if self.path == '/desktop':
                     node.request('/stop', {})
                     subprocess.run(['bash', '/control/manage.sh', 'desktop'], check=True, timeout=20)
@@ -340,7 +400,8 @@ def main():
     finally:
         node.gate.stop()
         if rclpy.ok():
-            node.tick()
+            try: node.tick()
+            except Exception: pass
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

@@ -1629,3 +1629,220 @@ footer a {
 .map-progress {
   color: #68838b;
 }
+/* v1.1: one aspect-correct perception panel and first-class recording controls. */
+.perception-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(190px, 1fr);
+  gap: 0;
+  margin: 0 8px;
+  background: #f7fbf9;
+  border-radius: 9px;
+  overflow: hidden;
+  align-items: stretch;
+}
+.perception-grid .feed {
+  margin: 0;
+  border-radius: 0;
+  height: auto !important;
+  max-height: none;
+  min-height: 0;
+  aspect-ratio: var(--camera-aspect, 4/3);
+}
+.integrated-radar {
+  height: auto !important;
+  margin: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  padding: 20px 8px 35px;
+  min-width: 0;
+}
+.integrated-radar canvas {
+  width: 100%;
+  height: auto;
+  max-width: 290px;
+  aspect-ratio: 1;
+}
+.sensor-grid {
+  grid-template-columns: 1fr;
+}
+.telemetry-panel .telemetry {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 0 20px 18px;
+  gap: 16px;
+}
+.telemetry-panel .metric {
+  padding: 0 !important;
+  border: 0;
+}
+.recording-strip {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+}
+.recording-main {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: space-between;
+}
+.recording-main h2 {
+  font-size: 13px;
+}
+.recording-main [role="status"] {
+  font-size: 10px;
+  color: var(--accent);
+}
+.instance-info {
+  display: flex;
+  flex-direction: column;
+  margin-right: auto;
+}
+.instance-info strong {
+  font:
+    12px ui-monospace,
+    monospace;
+  color: #55777c;
+}
+.instance-info span {
+  font-size: 10px;
+  color: #849da0;
+}
+.recording-main button {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.recording-main kbd {
+  margin-left: 10px;
+  color: #d3ede8;
+  background: #126f63;
+  border-color: #2d9787;
+}
+.recording-path {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: #82979e;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.recording-path code {
+  color: #57717b;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.text-button {
+  padding: 2px 4px;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 10px;
+}
+.recording-strip > .error {
+  font-size: 11px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.recording-options {
+  margin-top: 10px;
+  font-size: 10px;
+  color: #83999c;
+}
+.recording-options summary {
+  cursor: pointer;
+}
+.recording-settings-grid {
+  display: grid;
+  grid-template-columns: 2fr 1.3fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+  margin: 15px 0 10px;
+}
+.recording-settings-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.recording-options select,
+.recording-options input {
+  width: 100%;
+  padding: 8px;
+  background: #f8fbfb;
+  border: 1px solid #dce7e7;
+  border-radius: 6px;
+  font: 11px inherit;
+  color: #56747c;
+}
+.recording-options button {
+  font-size: 10px;
+}
+.recording-options input {
+  margin: 10px 0;
+  max-width: 360px;
+}
+.recording-action-row {
+  display: flex;
+  gap: 10px;
+}
+#instanceList {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding-left: 18px;
+  font-size: 10px;
+}
+@media (max-width: 1100px) {
+  .perception-grid {
+    grid-template-columns: 1fr;
+  }
+  .integrated-radar {
+    height: 230px !important;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .integrated-radar canvas {
+    height: 190px;
+    width: 190px;
+  }
+  .recording-settings-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .recording-main {
+    gap: 10px;
+  }
+  .instance-info strong {
+    font-size: 10px;
+  }
+}
+@media (max-width: 760px) {
+  .recording-strip {
+    padding: 14px;
+  }
+  .recording-main {
+    flex-wrap: wrap;
+  }
+  .recording-main h2 {
+    font-size: 12px;
+  }
+  .instance-info {
+    min-width: 110px;
+  }
+  .recording-main button {
+    font-size: 11px;
+  }
+  .recording-path code {
+    font-size: 9px;
+  }
+  .recording-settings-grid {
+    gap: 8px;
+  }
+  .recording-settings-grid button {
+    font-size: 9px;
+  }
+  #instanceList {
+    grid-template-columns: 1fr;
+  }
+  .telemetry-panel .telemetry {
+    padding: 0 16px 18px;
+  }
+}

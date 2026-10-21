@@ -30,3 +30,14 @@ snapshots/
 *.bag
 *.db3
 *.mcap
+# Private captures and connection profiles
+robot/recordings/
+recordings/
+data/
+*.mp4
+*.mkv
+*.partial
+*.pbstream
+*.posegraph
+*.data
+.companion.lock

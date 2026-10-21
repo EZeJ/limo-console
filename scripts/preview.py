@@ -75,7 +75,7 @@ class Preview(BaseHTTPRequestHandler):
         elif path == '/maps': self.respond({'maps': []})
         elif path == '/camera.jpg': self.respond(CAMERA_SVG, 'image/svg+xml')
         elif path == '/map.png': self.respond(MAP_PNG, 'image/png')
-        elif path in ('/', '/app.js', '/style.css', '/i18n.js', '/messages.js'):
+        elif path in ('/', '/app.js', '/style.css', '/i18n.js', '/messages.js', '/recording.js'):
             name = 'index.html' if path == '/' else path[1:]
             kind = 'text/html' if name.endswith('.html') else 'text/css' if name.endswith('.css') else 'application/javascript'
             self.respond((ROOT/'robot/web'/name).read_bytes(), kind+'; charset=utf-8')

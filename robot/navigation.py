@@ -147,6 +147,7 @@ class Navigation:
                     for n in self.lifecycle_clients))
 
     def check_ready(self):
+        self.node.require_recording()
         if self.preparing:
             raise ValueError("Wait for mapping setup to finish")
         if self.phase in self.ACTIVE or self.node.gate.mode != 'stopped':

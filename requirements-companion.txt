@@ -1,0 +1,5 @@
+mcap>=1.2,<2
+mcap-ros2-support>=0.5,<1
+av>=14,<17
+Pillow>=10,<13
+numpy>=1.26,<3
