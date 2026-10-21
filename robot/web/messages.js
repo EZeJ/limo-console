@@ -1,5 +1,13 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "Scanning in place: linear speed is zero. Turning briefly, then stopping to replan.": "正在原地补扫：线速度为零。短暂转向后停车，重新规划。",
+  "In-place scan turn timed out": "原地补扫转向超时",
+  "In-place scan turn deviated from its position. Stopped.": "原地转向发生位置偏移，已停车。",
+  "Obstacle inside the rotation sweep. In-place turn stopped.": "转向扫掠范围内有障碍，已停止原地转向。",
+  "In-place scan complete. Waiting for map updates before replanning.": "原地补扫完成，等待地图更新后重新规划。",
+  "No reachable frontier or clear rotation sweep. Stopped.": "没有可达探索边界，原地转向范围也未确认畅通，已停车。",
+  "Required sensor topics are not arriving: ": "必需的传感器数据未到达：",
+
   "Manual control": "手动控制",
   "Fresh chassis and lidar data are required": "需要新鲜的底盘与雷达数据",
   "Camera unavailable. Preview only is affected.": "摄像头不可用，仅影响预览。",

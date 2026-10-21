@@ -132,7 +132,7 @@ class Control(Node):
 
     def on_nav(self, msg):
         with self.lock:
-            if self.gate.mode == 'navigation':
+            if self.gate.mode == 'navigation' and not self.navigation.explorer.scanning:
                 try:
                     speed=msg.linear.x
                     if self.navigation.explorer.active:speed=min(speed,self.navigation.explorer.max_speed)

@@ -10,6 +10,7 @@ from PIL import Image
 from nav2_msgs.action import NavigateToPose, ComputePathToPose
 from action_msgs.msg import GoalStatus
 from navigation_core import exploration_targets, transform_pose, validate_goal, map_file_pixels, wrap
+from pivot import Pivot,rotation_clear
 
 
 class Explorer:
@@ -46,6 +47,8 @@ class Explorer:
         self.stepping = False
         self.step_count = 0
         self.wait_revision = None
+        self.scan_turn=None
+        self.scan_headings=[]
 
     def start(self,max_seconds=120.,max_distance=6.,max_speed=.15):
         n = self.nav
@@ -61,6 +64,8 @@ class Explorer:
         self.stepping = False
         self.step_count = 0
         self.wait_revision = None
+        self.scan_turn=None
+        self.scan_headings=[n.odom_pose()[2]]
         self.started = time.monotonic()
         self.reached = 0
         self.visited = []
@@ -85,6 +90,22 @@ class Explorer:
         n.last_heartbeat = self.started
         n.phase = 'exploring'
         n.message = 'Exploration: looking for reachable frontiers…'
+
+    def try_pivot(self):
+        n=self.nav
+        if len(self.scan_headings)>=13:return False
+        yaw=n.odom_pose()[2]
+        for angle in (.35,-.35):
+            target=wrap(yaw+angle)
+            if any(abs(wrap(target-old))<.20 for old in self.scan_headings):continue
+            if not rotation_clear(n.node.lidar_points,angle):continue
+            self.scanning=True;self.scan_turn=Pivot(yaw,time.monotonic(),angle)
+            self.scan_origin=n.odom_pose();self.scan_map_revision=n.content_revision
+            self.scan_headings.append(target)
+            n.node.gate.arm('navigation',n.last_heartbeat)
+            n.message='Scanning in place: linear speed is zero. Turning briefly, then stopping to replan.'
+            return True
+        return False
 
     def finish_leg(self, status):
         n = self.nav
@@ -129,6 +150,20 @@ class Explorer:
         now = time.monotonic()
         if now-self.started >= self.max_seconds or n.trail.length >= self.max_distance or self.reached >= 12:
             n.stop('Exploration time or distance limit reached. Map retained; start another run to continue.', 'complete')
+            return
+        if self.scanning:
+            pose=n.odom_pose()
+            if n.node.gate.mode!='navigation' or math.hypot(pose[0]-self.scan_origin[0],pose[1]-self.scan_origin[1])>.03:
+                n.stop('In-place scan turn deviated from its position. Stopped.','failed');return
+            if not rotation_clear(n.node.lidar_points,self.scan_turn.remaining):
+                n.stop('Obstacle inside the rotation sweep. In-place turn stopped.','failed');return
+            command,done=self.scan_turn.command(pose[2],now)
+            if done:
+                n.node.gate.stop();self.scanning=False;self.selection=None
+                self.wait_revision=self.scan_map_revision;self.map_deadline=now+8;self.next_at=now+1
+                n.message='In-place scan complete. Waiting for map updates before replanning.'
+            else:
+                n.node.gate.lease=n.last_heartbeat;n.node.gate.receive(*command,now)
             return
         if n.phase != 'exploring':
             blocked = n.node.reason in ('Obstacle close to chassis', 'No usable front lidar returns', 'No usable rear lidar returns')
@@ -206,7 +241,8 @@ class Explorer:
                     continue
                 self.check_path(p)
                 return
-            n.stop('No footprint-safe reachable frontier. Stopped; continue manual mapping to reveal a route.', 'failed')
+            if self.try_pivot():return
+            n.stop('No reachable frontier or clear rotation sweep. Stopped.', 'failed')
             return
         transform = n.transform()
         pose = transform_pose(n.odom_pose(), transform)
@@ -228,7 +264,8 @@ class Explorer:
                     n.stop('Frontier calculation failed: '+error, 'failed')
                 else:
                     if not candidates:
-                        n.stop('No footprint-safe reachable frontier. Stopped; continue manual mapping to reveal a route.', 'failed')
+                        if self.try_pivot():return
+                        n.stop('No reachable frontier or clear rotation sweep. Stopped.', 'failed')
                         return
                     self.selection = candidates
                     self.next_at = time.monotonic()
