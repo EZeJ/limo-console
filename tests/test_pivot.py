@@ -2,6 +2,7 @@ from pathlib import Path
 import sys,unittest,math
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'robot'))
 from pivot import Pivot,rotation_clear
+from safety import Gate
 class PivotTests(unittest.TestCase):
     def test_all_pivot_outputs_have_zero_linear_velocity(self):
         for sign in (-1,1):
@@ -15,6 +16,16 @@ class PivotTests(unittest.TestCase):
         self.assertFalse(rotation_clear([(0,.26)],1.))
         self.assertFalse(rotation_clear([(.1,.1)],.3))
         self.assertFalse(rotation_clear([],.3))
+    def test_pivot_gate_never_allows_linear_motion_or_an_unchecked_sweep(self):
+        gate=Gate();gate.arm('navigation',10);gate.pivot_active=True;gate.pivot_clear=True
+        gate.receive(0,.3,10)
+        args=(10.1,.1,.1,.2,0,.2,0,0)
+        self.assertEqual(gate.output(*args)[0],(0,.18))
+        gate.receive(.05,.2,10)
+        self.assertEqual(gate.output(*args)[0],(0,0))
+        gate.receive(0,.2,10);gate.pivot_clear=False
+        self.assertEqual(gate.output(*args)[0],(0,0))
+        gate.stop();self.assertFalse(gate.pivot_active)
     def test_wrap_and_timeout(self):
         turn=Pivot(math.pi-.1,0,angle=.3)
         turn.command(-math.pi+.1,1)

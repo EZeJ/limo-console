@@ -103,6 +103,7 @@ class Explorer:
             self.scan_origin=n.odom_pose();self.scan_map_revision=n.content_revision
             self.scan_headings.append(target)
             n.node.gate.arm('navigation',n.last_heartbeat)
+            n.node.gate.pivot_active=True
             n.message='Scanning in place: linear speed is zero. Turning briefly, then stopping to replan.'
             return True
         return False
@@ -157,6 +158,7 @@ class Explorer:
                 n.stop('In-place scan turn deviated from its position. Stopped.','failed');return
             if not rotation_clear(n.node.lidar_points,self.scan_turn.remaining):
                 n.stop('Obstacle inside the rotation sweep. In-place turn stopped.','failed');return
+            n.node.gate.pivot_clear=True
             command,done=self.scan_turn.command(pose[2],now)
             if done:
                 n.node.gate.stop();self.scanning=False;self.selection=None

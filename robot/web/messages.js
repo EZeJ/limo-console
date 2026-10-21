@@ -1,5 +1,8 @@
 // English source messages and Simplified Chinese translations.
 const translations = {
+  "In-place rotation requires a clear sweep and zero linear velocity": "原地转向需要扫掠范围畅通且线速度为零",
+  "Lidar-checked in-place rotation": "雷达校验后的原地转向",
+
   "Source folder": "源文件位置",
   "Open source folder": "打开源文件夹",
   "Package instance ZIP": "打包当前实例 ZIP",
